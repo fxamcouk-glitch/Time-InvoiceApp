@@ -122,6 +122,7 @@ export function TimeTracker({ clients, entries, onChange }: Props) {
             <Field label="Hours">
               <Input
                 type="number"
+                inputMode="decimal"
                 min="0"
                 step="0.25"
                 value={form.hours}
@@ -132,6 +133,7 @@ export function TimeTracker({ clients, entries, onChange }: Props) {
             <Field label="Rate ($/hr)">
               <Input
                 type="number"
+                inputMode="decimal"
                 min="0"
                 step="0.01"
                 value={form.rate}

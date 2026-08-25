@@ -131,12 +131,12 @@ export function InvoicesView({ clients, entries, invoices, business, onEntriesCh
               ) : (
                 <ul className="max-h-56 divide-y divide-slate-100 overflow-y-auto rounded-md border border-slate-200">
                   {unbilledForClient.map((entry) => (
-                    <li key={entry.id} className="flex items-center gap-2 px-2.5 py-2 text-sm">
+                    <li key={entry.id} className="flex items-center gap-3 px-2.5 py-3 text-sm">
                       <input
                         type="checkbox"
                         checked={selectedEntryIds.has(entry.id)}
                         onChange={() => toggleEntry(entry.id)}
-                        className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                        className="h-5 w-5 shrink-0 rounded border-slate-300 text-indigo-600"
                       />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-slate-700">{entry.description || entry.date}</p>
@@ -151,10 +151,10 @@ export function InvoicesView({ clients, entries, invoices, business, onEntriesCh
 
             <div className="grid grid-cols-2 gap-3">
               <Field label="Tax rate (%)">
-                <Input type="number" min="0" step="0.1" value={taxRate} onChange={(e) => setTaxRate(e.target.value)} />
+                <Input type="number" inputMode="decimal" min="0" step="0.1" value={taxRate} onChange={(e) => setTaxRate(e.target.value)} />
               </Field>
               <Field label="Due in (days)">
-                <Input type="number" min="0" value={dueInDays} onChange={(e) => setDueInDays(e.target.value)} />
+                <Input type="number" inputMode="numeric" min="0" value={dueInDays} onChange={(e) => setDueInDays(e.target.value)} />
               </Field>
             </div>
             <Field label="Notes (optional)">

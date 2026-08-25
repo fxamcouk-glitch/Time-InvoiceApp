@@ -93,6 +93,7 @@ export function ClientsView({ clients, onChange }: Props) {
           <Field label="Default hourly rate ($)">
             <Input
               type="number"
+              inputMode="decimal"
               min="0"
               step="0.01"
               value={form.hourlyRate}
