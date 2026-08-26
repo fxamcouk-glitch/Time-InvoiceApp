@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { CalendarView } from './CalendarView';
 import { today } from '../lib/format';
 import { distanceMeters, geocodeAddress, getCurrentPosition, reverseGeocode, sleep } from '../lib/geo';
 import { newId } from '../lib/id';
@@ -15,14 +14,13 @@ interface Props {
   onClientsChange: (clients: Client[]) => void;
 }
 
-type ViewMode = 'list' | Granularity | 'calendar';
+type ViewMode = 'list' | Granularity;
 
 const VIEW_MODES: { id: ViewMode; label: string }[] = [
   { id: 'list', label: 'List' },
   { id: 'day', label: 'Days' },
   { id: 'week', label: 'Weeks' },
   { id: 'month', label: 'Months' },
-  { id: 'calendar', label: 'Calendar' },
 ];
 
 function formatDistance(meters: number): string {
@@ -297,9 +295,7 @@ export function TimeTracker({ clients, entries, onChange, onClientsChange }: Pro
           )}
         </div>
 
-        {viewMode === 'calendar' ? (
-          <CalendarView entries={visibleEntries} clients={clients} />
-        ) : viewMode !== 'list' ? (
+        {viewMode !== 'list' ? (
           <PeriodRollup entries={visibleEntries} clients={clients} granularity={viewMode} />
         ) : visibleEntries.length === 0 ? (
           <EmptyState title="No time entries" description="Log your first entry to see it here." />

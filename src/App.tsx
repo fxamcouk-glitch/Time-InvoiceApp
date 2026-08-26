@@ -1,17 +1,19 @@
 import { useState } from 'react';
 import { BusinessSettings } from './components/BusinessSettings';
+import { CalendarPage } from './components/CalendarPage';
 import { ClientsView } from './components/ClientsView';
-import { ClockIcon, ReceiptIcon, UsersIcon } from './components/icons';
+import { CalendarIcon, ClockIcon, ReceiptIcon, UsersIcon } from './components/icons';
 import { InvoicesView } from './components/InvoicesView';
 import { TimeTracker } from './components/TimeTracker';
 import { Button } from './components/ui';
 import { useLocalStorage } from './lib/storage';
 import type { BusinessInfo, Client, Invoice, TimeEntry } from './types';
 
-type Tab = 'tracker' | 'clients' | 'invoices';
+type Tab = 'tracker' | 'calendar' | 'clients' | 'invoices';
 
 const TABS: { id: Tab; label: string; icon: (props: { className?: string }) => React.ReactElement }[] = [
   { id: 'tracker', label: 'Time', icon: ClockIcon },
+  { id: 'calendar', label: 'Calendar', icon: CalendarIcon },
   { id: 'clients', label: 'Clients', icon: UsersIcon },
   { id: 'invoices', label: 'Invoices', icon: ReceiptIcon },
 ];
@@ -61,6 +63,7 @@ function App() {
         {tab === 'tracker' && (
           <TimeTracker clients={clients} entries={entries} onChange={setEntries} onClientsChange={setClients} />
         )}
+        {tab === 'calendar' && <CalendarPage clients={clients} entries={entries} />}
         {tab === 'clients' && <ClientsView clients={clients} onChange={setClients} />}
         {tab === 'invoices' && (
           <InvoicesView
