@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { today } from '../lib/format';
+import { formatCurrency, today } from '../lib/format';
 import { distanceMeters, geocodeAddress, getCurrentPosition, reverseGeocode, sleep } from '../lib/geo';
 import { newId } from '../lib/id';
 import type { Client, EntryLocation, TimeEntry } from '../types';
@@ -221,7 +221,7 @@ export function TimeTracker({ clients, entries, onChange, onClientsChange }: Pro
                 required
               />
             </Field>
-            <Field label="Rate ($/hr)">
+            <Field label="Rate (£/hr)">
               <Input
                 type="number"
                 inputMode="decimal"
@@ -290,7 +290,7 @@ export function TimeTracker({ clients, entries, onChange, onClientsChange }: Pro
           </div>
           {viewMode === 'list' && (
             <p className="text-sm text-slate-500">
-              Unbilled: <span className="font-semibold text-slate-800">${unbilledTotal.toFixed(2)}</span>
+              Unbilled: <span className="font-semibold text-slate-800">{formatCurrency(unbilledTotal)}</span>
             </p>
           )}
         </div>
@@ -315,7 +315,8 @@ export function TimeTracker({ clients, entries, onChange, onClientsChange }: Pro
                 </div>
                 <div className="flex flex-wrap items-center gap-3 sm:shrink-0">
                   <span className="text-sm text-slate-600">
-                    {entry.hours}h &times; ${entry.rate.toFixed(2)} = <span className="font-medium">${(entry.hours * entry.rate).toFixed(2)}</span>
+                    {entry.hours}h &times; {formatCurrency(entry.rate)} ={' '}
+                    <span className="font-medium">{formatCurrency(entry.hours * entry.rate)}</span>
                   </span>
                   {!entry.invoiceId && (
                     <>

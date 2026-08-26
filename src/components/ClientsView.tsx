@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { formatCurrency } from '../lib/format';
 import { getCurrentPosition, reverseGeocode } from '../lib/geo';
 import { newId } from '../lib/id';
 import type { Client } from '../types';
@@ -145,7 +146,7 @@ export function ClientsView({ clients, onChange }: Props) {
               </p>
             )}
           </div>
-          <Field label="Default hourly rate ($)">
+          <Field label="Default hourly rate (£)">
             <Input
               type="number"
               inputMode="decimal"
@@ -180,7 +181,7 @@ export function ClientsView({ clients, onChange }: Props) {
                 </div>
                 <div className="flex flex-wrap items-center gap-3 sm:shrink-0">
                   {c.lat != null && <span title="Location saved">📍</span>}
-                  <span className="text-sm text-slate-500">${c.hourlyRate.toFixed(2)}/hr</span>
+                  <span className="text-sm text-slate-500">{formatCurrency(c.hourlyRate)}/hr</span>
                   <Button variant="ghost" onClick={() => edit(c)}>
                     Edit
                   </Button>
