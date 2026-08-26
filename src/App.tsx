@@ -58,7 +58,9 @@ function App() {
       </header>
 
       <main className="mx-auto max-w-6xl px-4 py-6 pb-24 sm:px-6 sm:py-8 sm:pb-8">
-        {tab === 'tracker' && <TimeTracker clients={clients} entries={entries} onChange={setEntries} />}
+        {tab === 'tracker' && (
+          <TimeTracker clients={clients} entries={entries} onChange={setEntries} onClientsChange={setClients} />
+        )}
         {tab === 'clients' && <ClientsView clients={clients} onChange={setClients} />}
         {tab === 'invoices' && (
           <InvoicesView

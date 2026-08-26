@@ -4,6 +4,14 @@ export interface Client {
   email: string;
   address: string;
   hourlyRate: number;
+  lat?: number;
+  lng?: number;
+}
+
+export interface EntryLocation {
+  lat: number;
+  lng: number;
+  address: string;
 }
 
 export interface TimeEntry {
@@ -14,6 +22,7 @@ export interface TimeEntry {
   hours: number;
   rate: number;
   invoiceId: string | null;
+  location?: EntryLocation;
 }
 
 export type InvoiceStatus = 'draft' | 'sent' | 'paid';

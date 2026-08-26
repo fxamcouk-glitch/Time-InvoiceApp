@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
+import { CalendarView } from './CalendarView';
 import { today } from '../lib/format';
+import { distanceMeters, geocodeAddress, getCurrentPosition, reverseGeocode, sleep } from '../lib/geo';
 import { newId } from '../lib/id';
-import type { Client, TimeEntry } from '../types';
+import type { Client, EntryLocation, TimeEntry } from '../types';
 import type { Granularity } from './PeriodRollup';
 import { PeriodRollup } from './PeriodRollup';
 import { Button, Card, EmptyState, Field, Input, Select, Textarea, LabelBadge } from './ui';
@@ -10,16 +12,40 @@ interface Props {
   clients: Client[];
   entries: TimeEntry[];
   onChange: (entries: TimeEntry[]) => void;
+  onClientsChange: (clients: Client[]) => void;
 }
 
-type ViewMode = 'list' | Granularity;
+type ViewMode = 'list' | Granularity | 'calendar';
 
 const VIEW_MODES: { id: ViewMode; label: string }[] = [
   { id: 'list', label: 'List' },
   { id: 'day', label: 'Days' },
   { id: 'week', label: 'Weeks' },
   { id: 'month', label: 'Months' },
+  { id: 'calendar', label: 'Calendar' },
 ];
+
+function formatDistance(meters: number): string {
+  return meters < 1000 ? `${Math.round(meters)}m` : `${(meters / 1000).toFixed(1)}km`;
+}
+
+/** Geocodes any client addresses we haven't looked up yet, respecting Nominatim's ~1 req/sec limit. */
+async function ensureClientCoords(clients: Client[]): Promise<Client[]> {
+  let changed = false;
+  const updated = [...clients];
+  for (let i = 0; i < updated.length; i++) {
+    const client = updated[i];
+    if (client.lat != null && client.lng != null) continue;
+    if (!client.address.trim()) continue;
+    const coords = await geocodeAddress(client.address);
+    if (coords) {
+      updated[i] = { ...client, lat: coords.lat, lng: coords.lng };
+      changed = true;
+    }
+    await sleep(1100);
+  }
+  return changed ? updated : clients;
+}
 
 function emptyForm(clients: Client[]) {
   const first = clients[0];
@@ -32,22 +58,65 @@ function emptyForm(clients: Client[]) {
   };
 }
 
-export function TimeTracker({ clients, entries, onChange }: Props) {
+export function TimeTracker({ clients, entries, onChange, onClientsChange }: Props) {
   const [form, setForm] = useState(() => emptyForm(clients));
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filterClientId, setFilterClientId] = useState<string>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
+
+  const [locating, setLocating] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [capturedLocation, setCapturedLocation] = useState<EntryLocation | null>(null);
+  const [suggestion, setSuggestion] = useState<{ clientId: string; distance: number } | null>(null);
 
   const clientMap = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients]);
 
   function resetForm() {
     setForm(emptyForm(clients));
     setEditingId(null);
+    setLocating(false);
+    setLocationError(null);
+    setCapturedLocation(null);
+    setSuggestion(null);
   }
 
   function handleClientChange(clientId: string) {
     const client = clientMap.get(clientId);
     setForm((f) => ({ ...f, clientId, rate: editingId ? f.rate : client ? String(client.hourlyRate) : f.rate }));
+  }
+
+  async function handleUseLocation() {
+    setLocating(true);
+    setLocationError(null);
+    setSuggestion(null);
+    try {
+      const pos = await getCurrentPosition();
+      const address = await reverseGeocode(pos).catch(() => `${pos.lat.toFixed(5)}, ${pos.lng.toFixed(5)}`);
+      setCapturedLocation({ ...pos, address });
+
+      const updatedClients = await ensureClientCoords(clients);
+      if (updatedClients !== clients) onClientsChange(updatedClients);
+
+      let nearest: { clientId: string; distance: number } | null = null;
+      for (const client of updatedClients) {
+        if (client.lat == null || client.lng == null) continue;
+        const distance = distanceMeters(pos, { lat: client.lat, lng: client.lng });
+        if (!nearest || distance < nearest.distance) nearest = { clientId: client.id, distance };
+      }
+      if (nearest && nearest.distance <= 500 && nearest.clientId !== form.clientId) {
+        setSuggestion(nearest);
+      }
+    } catch (err) {
+      setLocationError(err instanceof Error ? err.message : 'Could not get your location.');
+    } finally {
+      setLocating(false);
+    }
+  }
+
+  function applySuggestion() {
+    if (!suggestion) return;
+    handleClientChange(suggestion.clientId);
+    setSuggestion(null);
   }
 
   function submit(e: React.FormEvent) {
@@ -60,7 +129,15 @@ export function TimeTracker({ clients, entries, onChange }: Props) {
       onChange(
         entries.map((entry) =>
           entry.id === editingId
-            ? { ...entry, clientId: form.clientId, date: form.date, description: form.description.trim(), hours, rate }
+            ? {
+                ...entry,
+                clientId: form.clientId,
+                date: form.date,
+                description: form.description.trim(),
+                hours,
+                rate,
+                location: capturedLocation ?? entry.location,
+              }
             : entry,
         ),
       );
@@ -73,6 +150,7 @@ export function TimeTracker({ clients, entries, onChange }: Props) {
         hours,
         rate,
         invoiceId: null,
+        location: capturedLocation ?? undefined,
       };
       onChange([entry, ...entries]);
     }
@@ -88,6 +166,9 @@ export function TimeTracker({ clients, entries, onChange }: Props) {
       hours: String(entry.hours),
       rate: String(entry.rate),
     });
+    setLocationError(null);
+    setCapturedLocation(null);
+    setSuggestion(null);
   }
 
   function remove(id: string) {
@@ -154,6 +235,24 @@ export function TimeTracker({ clients, entries, onChange }: Props) {
               />
             </Field>
           </div>
+          <div>
+            <Button type="button" variant="secondary" onClick={handleUseLocation} disabled={locating} className="w-full">
+              📍 {locating ? 'Finding your location…' : 'Use my location'}
+            </Button>
+            {locationError && <p className="mt-1.5 text-xs text-red-600">{locationError}</p>}
+            {capturedLocation && !locationError && (
+              <p className="mt-1.5 truncate text-xs text-slate-500">📍 {capturedLocation.address}</p>
+            )}
+            {suggestion && (
+              <button
+                type="button"
+                onClick={applySuggestion}
+                className="mt-1.5 text-xs font-medium text-indigo-600 hover:underline"
+              >
+                Near {clientMap.get(suggestion.clientId)?.name} ({formatDistance(suggestion.distance)}) — tap to use
+              </button>
+            )}
+          </div>
           <div className="mt-1 flex gap-2">
             <Button type="submit">{editingId ? 'Save changes' : 'Add entry'}</Button>
             {editingId && (
@@ -198,7 +297,9 @@ export function TimeTracker({ clients, entries, onChange }: Props) {
           )}
         </div>
 
-        {viewMode !== 'list' ? (
+        {viewMode === 'calendar' ? (
+          <CalendarView entries={visibleEntries} clients={clients} />
+        ) : viewMode !== 'list' ? (
           <PeriodRollup entries={visibleEntries} clients={clients} granularity={viewMode} />
         ) : visibleEntries.length === 0 ? (
           <EmptyState title="No time entries" description="Log your first entry to see it here." />
@@ -214,6 +315,7 @@ export function TimeTracker({ clients, entries, onChange }: Props) {
                   <p className="truncate text-xs text-slate-400">
                     {entry.date} {entry.description && `· ${entry.description}`}
                   </p>
+                  {entry.location && <p className="truncate text-xs text-slate-400">📍 {entry.location.address}</p>}
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
                   <span className="text-sm text-slate-600">
