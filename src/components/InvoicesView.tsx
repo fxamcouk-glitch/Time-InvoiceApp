@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { addDays, formatCurrency, formatDate, today } from '../lib/format';
 import { newId } from '../lib/id';
 import { generateInvoicePdf } from '../lib/pdf';
+import { canShareFile, openMailto, pdfToFile, shareFile } from '../lib/share';
 import type { BusinessInfo, Client, Invoice, InvoiceStatus, MaterialEntry, TimeEntry } from '../types';
 import { Button, Card, EmptyState, Field, Input, LabelBadge, Select, Textarea } from './ui';
 
@@ -114,13 +115,38 @@ export function InvoicesView({
     onInvoicesChange(invoices.map((i) => (i.id === id ? { ...i, status } : i)));
   }
 
-  function download(invoice: Invoice) {
+  function buildInvoicePdf(invoice: Invoice) {
     const client = clientMap.get(invoice.clientId);
-    if (!client) return;
+    if (!client) return null;
     const invoiceEntries = entries.filter((e) => invoice.entryIds.includes(e.id));
     const invoiceMaterials = materials.filter((m) => (invoice.materialIds ?? []).includes(m.id));
     const doc = generateInvoicePdf(invoice, client, invoiceEntries, invoiceMaterials, business);
-    doc.save(`${invoice.number}.pdf`);
+    return { doc, client };
+  }
+
+  function download(invoice: Invoice) {
+    const built = buildInvoicePdf(invoice);
+    if (!built) return;
+    built.doc.save(`${invoice.number}.pdf`);
+  }
+
+  async function emailInvoice(invoice: Invoice) {
+    const built = buildInvoicePdf(invoice);
+    if (!built) return;
+    const { doc, client } = built;
+    const filename = `${invoice.number}.pdf`;
+    const file = pdfToFile(doc, filename);
+    const subject = `Invoice ${invoice.number}`;
+    const body = `Hi ${client.name},\n\nPlease find attached invoice ${invoice.number}, due ${formatDate(invoice.dueDate)}.\n\nThanks,\n${business.name}`;
+
+    if (canShareFile(file)) {
+      const ok = await shareFile(file, subject, body);
+      if (ok) return;
+    }
+    // Fallback for browsers without file-sharing support: download the PDF and open a
+    // pre-filled email draft so it just needs the file attached.
+    doc.save(filename);
+    openMailto(client.email, subject, body);
   }
 
   const viewingInvoice = invoices.find((i) => i.id === viewingId) ?? null;
@@ -279,6 +305,7 @@ export function InvoicesView({
             onStatusChange={(status) => setStatus(viewingInvoice.id, status)}
             onDelete={() => deleteInvoice(viewingInvoice.id)}
             onDownload={() => download(viewingInvoice)}
+            onEmail={() => emailInvoice(viewingInvoice)}
           />
         )}
       </div>
@@ -294,6 +321,7 @@ function InvoiceDetail({
   onStatusChange,
   onDelete,
   onDownload,
+  onEmail,
 }: {
   invoice: Invoice;
   client: Client | null;
@@ -302,7 +330,19 @@ function InvoiceDetail({
   onStatusChange: (status: InvoiceStatus) => void;
   onDelete: () => void;
   onDownload: () => void;
+  onEmail: () => Promise<void>;
 }) {
+  const [emailing, setEmailing] = useState(false);
+
+  async function handleEmailClick() {
+    setEmailing(true);
+    try {
+      await onEmail();
+    } finally {
+      setEmailing(false);
+    }
+  }
+
   const timeSubtotal = entries.reduce((sum, e) => sum + e.hours * e.rate, 0);
   const materialsSubtotal = materials.reduce((sum, m) => sum + m.amount, 0);
   const subtotal = timeSubtotal + materialsSubtotal;
@@ -326,6 +366,9 @@ function InvoiceDetail({
           </Select>
           <Button variant="secondary" onClick={onDownload}>
             Download PDF
+          </Button>
+          <Button variant="secondary" onClick={handleEmailClick} disabled={emailing}>
+            {emailing ? 'Opening…' : '📧 Email invoice'}
           </Button>
           <Button variant="danger" onClick={onDelete}>
             Delete
