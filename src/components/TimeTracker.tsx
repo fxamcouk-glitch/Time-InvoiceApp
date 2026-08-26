@@ -302,7 +302,7 @@ export function TimeTracker({ clients, entries, onChange, onClientsChange }: Pro
         ) : (
           <ul className="divide-y divide-slate-100">
             {visibleEntries.map((entry) => (
-              <li key={entry.id} className="flex items-center justify-between gap-4 px-5 py-3">
+              <li key={entry.id} className="flex flex-col gap-2 px-5 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-medium text-slate-800">{clientMap.get(entry.clientId)?.name ?? 'Unknown client'}</p>
@@ -313,7 +313,7 @@ export function TimeTracker({ clients, entries, onChange, onClientsChange }: Pro
                   </p>
                   {entry.location && <p className="truncate text-xs text-slate-400">📍 {entry.location.address}</p>}
                 </div>
-                <div className="flex shrink-0 items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3 sm:shrink-0">
                   <span className="text-sm text-slate-600">
                     {entry.hours}h &times; ${entry.rate.toFixed(2)} = <span className="font-medium">${(entry.hours * entry.rate).toFixed(2)}</span>
                   </span>

@@ -242,14 +242,14 @@ function InvoiceDetail({
 
   return (
     <Card className="p-6">
-      <div className="mb-4 flex items-start justify-between gap-4">
-        <div>
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        <div className="min-w-0">
           <h3 className="text-lg font-semibold text-slate-800">{invoice.number}</h3>
           <p className="text-sm text-slate-500">
             {client?.name ?? 'Unknown client'} · Issued {formatDate(invoice.issueDate)} · Due {formatDate(invoice.dueDate)}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Select value={invoice.status} onChange={(e) => onStatusChange(e.target.value as InvoiceStatus)} className="w-32">
             <option value="draft">Draft</option>
             <option value="sent">Sent</option>
@@ -264,28 +264,30 @@ function InvoiceDetail({
         </div>
       </div>
 
-      <table className="w-full text-left text-sm">
-        <thead>
-          <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
-            <th className="py-2 font-medium">Date</th>
-            <th className="py-2 font-medium">Description</th>
-            <th className="py-2 text-right font-medium">Hours</th>
-            <th className="py-2 text-right font-medium">Rate</th>
-            <th className="py-2 text-right font-medium">Amount</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100">
-          {entries.map((e) => (
-            <tr key={e.id}>
-              <td className="py-2 text-slate-600">{formatDate(e.date)}</td>
-              <td className="py-2 text-slate-600">{e.description || '—'}</td>
-              <td className="py-2 text-right text-slate-600">{e.hours}</td>
-              <td className="py-2 text-right text-slate-600">{formatCurrency(e.rate)}</td>
-              <td className="py-2 text-right text-slate-700">{formatCurrency(e.hours * e.rate)}</td>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[480px] text-left text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
+              <th className="py-2 font-medium">Date</th>
+              <th className="py-2 font-medium">Description</th>
+              <th className="py-2 text-right font-medium">Hours</th>
+              <th className="py-2 text-right font-medium">Rate</th>
+              <th className="py-2 text-right font-medium">Amount</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {entries.map((e) => (
+              <tr key={e.id}>
+                <td className="py-2 text-slate-600">{formatDate(e.date)}</td>
+                <td className="py-2 text-slate-600">{e.description || '—'}</td>
+                <td className="py-2 text-right text-slate-600">{e.hours}</td>
+                <td className="py-2 text-right text-slate-600">{formatCurrency(e.rate)}</td>
+                <td className="py-2 text-right text-slate-700">{formatCurrency(e.hours * e.rate)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       <div className="ml-auto mt-4 w-56 space-y-1 text-sm">
         <div className="flex justify-between text-slate-500">

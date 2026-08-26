@@ -173,12 +173,12 @@ export function ClientsView({ clients, onChange }: Props) {
         ) : (
           <ul className="divide-y divide-slate-100">
             {clients.map((c) => (
-              <li key={c.id} className="flex items-center justify-between gap-4 px-5 py-4">
+              <li key={c.id} className="flex flex-col gap-2 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-slate-800">{c.name}</p>
                   <p className="truncate text-xs text-slate-400">{c.email || 'No email on file'}</p>
                 </div>
-                <div className="flex shrink-0 items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3 sm:shrink-0">
                   {c.lat != null && <span title="Location saved">📍</span>}
                   <span className="text-sm text-slate-500">${c.hourlyRate.toFixed(2)}/hr</span>
                   <Button variant="ghost" onClick={() => edit(c)}>
