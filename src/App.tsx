@@ -2,19 +2,21 @@ import { useCallback, useState } from 'react';
 import { BusinessSettings } from './components/BusinessSettings';
 import { CalendarPage } from './components/CalendarPage';
 import { ClientsView } from './components/ClientsView';
-import { CalendarIcon, ClockIcon, ReceiptIcon, RefreshIcon, UsersIcon } from './components/icons';
+import { BoxIcon, CalendarIcon, ClockIcon, ReceiptIcon, RefreshIcon, UsersIcon } from './components/icons';
 import { InvoicesView } from './components/InvoicesView';
+import { MaterialsView } from './components/MaterialsView';
 import { TimeTracker } from './components/TimeTracker';
 import { Button } from './components/ui';
 import { usePullToRefresh } from './hooks/usePullToRefresh';
 import { useLocalStorage } from './lib/storage';
-import type { BusinessInfo, Client, Invoice, TimeEntry } from './types';
+import type { BusinessInfo, Client, Invoice, MaterialEntry, TimeEntry } from './types';
 
-type Tab = 'tracker' | 'calendar' | 'clients' | 'invoices';
+type Tab = 'tracker' | 'calendar' | 'materials' | 'clients' | 'invoices';
 
 const TABS: { id: Tab; label: string; icon: (props: { className?: string }) => React.ReactElement }[] = [
   { id: 'tracker', label: 'Time', icon: ClockIcon },
   { id: 'calendar', label: 'Calendar', icon: CalendarIcon },
+  { id: 'materials', label: 'Materials', icon: BoxIcon },
   { id: 'clients', label: 'Clients', icon: UsersIcon },
   { id: 'invoices', label: 'Invoices', icon: ReceiptIcon },
 ];
@@ -25,6 +27,7 @@ function App() {
   const [tab, setTab] = useState<Tab>('tracker');
   const [clients, setClients] = useLocalStorage<Client[]>('hti.clients', []);
   const [entries, setEntries] = useLocalStorage<TimeEntry[]>('hti.entries', []);
+  const [materials, setMaterials] = useLocalStorage<MaterialEntry[]>('hti.materials', []);
   const [invoices, setInvoices] = useLocalStorage<Invoice[]>('hti.invoices', []);
   const [business, setBusiness] = useLocalStorage<BusinessInfo>('hti.business', defaultBusiness);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -90,14 +93,17 @@ function App() {
             <TimeTracker clients={clients} entries={entries} onChange={setEntries} onClientsChange={setClients} />
           )}
           {tab === 'calendar' && <CalendarPage clients={clients} entries={entries} />}
+          {tab === 'materials' && <MaterialsView clients={clients} materials={materials} onChange={setMaterials} />}
           {tab === 'clients' && <ClientsView clients={clients} onChange={setClients} />}
           {tab === 'invoices' && (
             <InvoicesView
               clients={clients}
               entries={entries}
+              materials={materials}
               invoices={invoices}
               business={business}
               onEntriesChange={setEntries}
+              onMaterialsChange={setMaterials}
               onInvoicesChange={setInvoices}
             />
           )}

@@ -1,12 +1,13 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import type { BusinessInfo, Client, Invoice, TimeEntry } from '../types';
+import type { BusinessInfo, Client, Invoice, MaterialEntry, TimeEntry } from '../types';
 import { formatCurrency, formatDate } from './format';
 
 export function generateInvoicePdf(
   invoice: Invoice,
   client: Client,
   entries: TimeEntry[],
+  materials: MaterialEntry[],
   business: BusinessInfo,
 ): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
@@ -42,36 +43,58 @@ export function generateInvoicePdf(
 
   y += 16 + Math.max(fromLines.length, toLines.length) * 14 + 20;
 
-  const rows = entries.map((e) => [
-    formatDate(e.date),
-    e.description || '—',
-    e.hours.toFixed(2),
-    formatCurrency(e.rate),
-    formatCurrency(e.hours * e.rate),
-  ]);
+  const getFinalY = () => (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
 
-  autoTable(doc, {
-    startY: y,
-    head: [['Date', 'Description', 'Hours', 'Rate', 'Amount']],
-    body: rows,
-    margin: { left: marginX, right: marginX },
-    headStyles: { fillColor: [31, 41, 55] },
-    columnStyles: {
-      2: { halign: 'right' },
-      3: { halign: 'right' },
-      4: { halign: 'right' },
-    },
-    styles: { fontSize: 9, cellPadding: 6 },
-  });
+  if (entries.length > 0) {
+    const rows = entries.map((e) => [
+      formatDate(e.date),
+      e.description || '—',
+      e.hours.toFixed(2),
+      formatCurrency(e.rate),
+      formatCurrency(e.hours * e.rate),
+    ]);
 
-  const finalY = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 20;
+    autoTable(doc, {
+      startY: y,
+      head: [['Date', 'Description', 'Hours', 'Rate', 'Amount']],
+      body: rows,
+      margin: { left: marginX, right: marginX },
+      headStyles: { fillColor: [31, 41, 55] },
+      columnStyles: {
+        2: { halign: 'right' },
+        3: { halign: 'right' },
+        4: { halign: 'right' },
+      },
+      styles: { fontSize: 9, cellPadding: 6 },
+    });
+    y = getFinalY() + 20;
+  }
 
-  const subtotal = entries.reduce((sum, e) => sum + e.hours * e.rate, 0);
+  if (materials.length > 0) {
+    const rows = materials.map((m) => [formatDate(m.date), m.description || '—', formatCurrency(m.amount)]);
+
+    autoTable(doc, {
+      startY: y,
+      head: [['Date', 'Materials', 'Amount']],
+      body: rows,
+      margin: { left: marginX, right: marginX },
+      headStyles: { fillColor: [31, 41, 55] },
+      columnStyles: {
+        2: { halign: 'right' },
+      },
+      styles: { fontSize: 9, cellPadding: 6 },
+    });
+    y = getFinalY() + 20;
+  }
+
+  const timeSubtotal = entries.reduce((sum, e) => sum + e.hours * e.rate, 0);
+  const materialsSubtotal = materials.reduce((sum, m) => sum + m.amount, 0);
+  const subtotal = timeSubtotal + materialsSubtotal;
   const tax = subtotal * (invoice.taxRate / 100);
   const total = subtotal + tax;
 
   const totalsX = 380;
-  let ty = finalY;
+  let ty = y;
   doc.setFontSize(10);
   doc.text('Subtotal', totalsX, ty);
   doc.text(formatCurrency(subtotal), 555, ty, { align: 'right' });
