@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { today } from '../lib/format';
 import { newId } from '../lib/id';
 import type { Client, TimeEntry } from '../types';
+import type { Granularity } from './PeriodRollup';
+import { PeriodRollup } from './PeriodRollup';
 import { Button, Card, EmptyState, Field, Input, Select, Textarea, LabelBadge } from './ui';
 
 interface Props {
@@ -9,6 +11,15 @@ interface Props {
   entries: TimeEntry[];
   onChange: (entries: TimeEntry[]) => void;
 }
+
+type ViewMode = 'list' | Granularity;
+
+const VIEW_MODES: { id: ViewMode; label: string }[] = [
+  { id: 'list', label: 'List' },
+  { id: 'day', label: 'Days' },
+  { id: 'week', label: 'Weeks' },
+  { id: 'month', label: 'Months' },
+];
 
 function emptyForm(clients: Client[]) {
   const first = clients[0];
@@ -25,6 +36,7 @@ export function TimeTracker({ clients, entries, onChange }: Props) {
   const [form, setForm] = useState(() => emptyForm(clients));
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filterClientId, setFilterClientId] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
 
   const clientMap = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients]);
 
@@ -154,20 +166,41 @@ export function TimeTracker({ clients, entries, onChange }: Props) {
       </Card>
 
       <Card className="lg:col-span-2">
-        <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-5 py-3">
-          <Select value={filterClientId} onChange={(e) => setFilterClientId(e.target.value)} className="w-48">
-            <option value="all">All clients</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
-          <p className="text-sm text-slate-500">
-            Unbilled: <span className="font-semibold text-slate-800">${unbilledTotal.toFixed(2)}</span>
-          </p>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <Select value={filterClientId} onChange={(e) => setFilterClientId(e.target.value)} className="w-40 sm:w-48">
+              <option value="all">All clients</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+            <div className="flex rounded-md border border-slate-300 p-0.5">
+              {VIEW_MODES.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setViewMode(m.id)}
+                  className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                    viewMode === m.id ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {viewMode === 'list' && (
+            <p className="text-sm text-slate-500">
+              Unbilled: <span className="font-semibold text-slate-800">${unbilledTotal.toFixed(2)}</span>
+            </p>
+          )}
         </div>
-        {visibleEntries.length === 0 ? (
+
+        {viewMode !== 'list' ? (
+          <PeriodRollup entries={visibleEntries} clients={clients} granularity={viewMode} />
+        ) : visibleEntries.length === 0 ? (
           <EmptyState title="No time entries" description="Log your first entry to see it here." />
         ) : (
           <ul className="divide-y divide-slate-100">
