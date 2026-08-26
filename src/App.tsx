@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { BusinessSettings } from './components/BusinessSettings';
 import { CalendarPage } from './components/CalendarPage';
 import { ClientsView } from './components/ClientsView';
-import { CalendarIcon, ClockIcon, ReceiptIcon, UsersIcon } from './components/icons';
+import { CalendarIcon, ClockIcon, ReceiptIcon, RefreshIcon, UsersIcon } from './components/icons';
 import { InvoicesView } from './components/InvoicesView';
 import { TimeTracker } from './components/TimeTracker';
 import { Button } from './components/ui';
@@ -36,26 +36,21 @@ function App() {
   return (
     <>
       <div
-        className="pointer-events-none fixed inset-x-0 top-0 z-30 flex justify-center overflow-hidden"
-        style={{ height: indicatorSize, transition: indicatorSize === 0 ? 'height 0.2s ease-out' : 'none' }}
-      >
-        <div className="flex items-end pb-2" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
-          <div
-            className={`h-5 w-5 rounded-full border-2 border-indigo-200 border-t-indigo-600 ${
-              refreshing || pullDistance >= threshold ? 'animate-spin' : ''
-            }`}
-            style={{ opacity: Math.min(indicatorSize / threshold, 1) }}
-          />
-        </div>
-      </div>
-
-      <div
-        className="min-h-screen"
+        className="pointer-events-none fixed inset-x-0 z-30 flex justify-center transition-opacity"
         style={{
-          transform: `translateY(${indicatorSize}px)`,
-          transition: indicatorSize === 0 ? 'transform 0.2s ease-out' : 'none',
+          top: 'calc(env(safe-area-inset-top) + 10px)',
+          opacity: Math.min(indicatorSize / threshold, 1),
+          transitionDuration: indicatorSize === 0 ? '200ms' : '0ms',
         }}
       >
+        <div
+          className={`h-6 w-6 rounded-full border-2 border-indigo-200 border-t-indigo-600 bg-white shadow ${
+            refreshing || pullDistance >= threshold ? 'animate-spin' : ''
+          }`}
+        />
+      </div>
+
+      <div className="min-h-screen">
         <header
           className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur"
           style={{ paddingTop: 'env(safe-area-inset-top)' }}
@@ -65,10 +60,15 @@ function App() {
               <h1 className="text-base font-semibold text-slate-900 sm:text-lg">Hours &amp; Invoicing</h1>
               <p className="hidden text-xs text-slate-400 sm:block">Track time, bill clients, get paid.</p>
             </div>
-            <Button variant="secondary" onClick={() => setSettingsOpen(true)}>
-              <span className="sm:hidden">Settings</span>
-              <span className="hidden sm:inline">Business settings</span>
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" onClick={handleRefresh} aria-label="Refresh">
+                <RefreshIcon className="h-5 w-5" />
+              </Button>
+              <Button variant="secondary" onClick={() => setSettingsOpen(true)}>
+                <span className="sm:hidden">Settings</span>
+                <span className="hidden sm:inline">Business settings</span>
+              </Button>
+            </div>
           </div>
           <nav className="mx-auto hidden max-w-6xl gap-1 px-6 sm:flex">
             {TABS.map((t) => (
