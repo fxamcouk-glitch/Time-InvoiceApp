@@ -3,6 +3,7 @@
 @layer base {
   html {
     color-scheme: light;
+    overscroll-behavior-y: contain;
   }
   body {
     @apply bg-slate-100 text-slate-900;
