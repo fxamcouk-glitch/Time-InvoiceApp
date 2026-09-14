@@ -1,5 +1,6 @@
 import { forwardRef } from 'react';
 import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, LabelHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
+import { PlusIcon } from './icons';
 
 export function Button({
   className = '',
@@ -65,6 +66,29 @@ export const Card = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(f
     </div>
   );
 });
+
+/** A normal button in toolbars on larger screens; a floating "+" above the tab bar on phones. */
+export function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <>
+      <span className="hidden sm:inline-block">
+        <Button type="button" onClick={onClick}>
+          <PlusIcon className="h-4 w-4" />
+          {label}
+        </Button>
+      </span>
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={label}
+        className="fixed right-4 z-20 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg transition-transform active:scale-95 sm:hidden"
+        style={{ bottom: 'calc(env(safe-area-inset-bottom) + 76px)' }}
+      >
+        <PlusIcon className="h-7 w-7" />
+      </button>
+    </>
+  );
+}
 
 export function EmptyState({ title, description }: { title: string; description: string }) {
   return (

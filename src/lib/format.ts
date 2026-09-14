@@ -16,6 +16,19 @@ export function formatDate(iso: string): string {
   });
 }
 
+/** "Mon, Sep 28" — with the year added only when it isn't the current one. */
+export function formatDayHeading(iso: string): string {
+  const [year, month, day] = iso.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  const sameYear = date.getFullYear() === new Date().getFullYear();
+  return date.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    ...(sameYear ? {} : { year: 'numeric' }),
+  });
+}
+
 export function today(): string {
   const d = new Date();
   const offset = d.getTimezoneOffset();

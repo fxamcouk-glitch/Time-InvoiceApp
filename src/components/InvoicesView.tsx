@@ -4,6 +4,7 @@ import { newId } from '../lib/id';
 import { generateInvoicePdf } from '../lib/pdf';
 import { canShareFile, openMailto, pdfToFile, shareFile } from '../lib/share';
 import type { BusinessInfo, Client, Invoice, InvoiceStatus, MaterialEntry, TimeEntry } from '../types';
+import { MailIcon } from './icons';
 import { Button, Card, EmptyState, Field, Input, LabelBadge, Select, Textarea } from './ui';
 
 interface Props {
@@ -281,7 +282,7 @@ export function InvoicesView({
                   >
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium text-slate-800">{inv.number}</p>
+                        <p className="text-base font-medium text-slate-800 sm:text-sm">{inv.number}</p>
                         <LabelBadge tone={statusTone[inv.status]}>{inv.status}</LabelBadge>
                       </div>
                       <p className="truncate text-xs text-slate-400">
@@ -368,7 +369,8 @@ function InvoiceDetail({
             Download PDF
           </Button>
           <Button variant="secondary" onClick={handleEmailClick} disabled={emailing}>
-            {emailing ? 'Opening…' : '📧 Email invoice'}
+            <MailIcon className="h-4 w-4" />
+            {emailing ? 'Opening…' : 'Email invoice'}
           </Button>
           <Button variant="danger" onClick={onDelete}>
             Delete

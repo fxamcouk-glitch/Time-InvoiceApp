@@ -11,6 +11,8 @@ export function usePullToRefresh(onRefresh: () => void) {
 
   useEffect(() => {
     function onTouchStart(e: TouchEvent) {
+      // A drag inside an open sheet scrolls the sheet, not the page.
+      if ((e.target as Element | null)?.closest?.('[data-no-pull]')) return;
       if (window.scrollY === 0 && !refreshing) {
         startY.current = e.touches[0].clientY;
         pulling.current = true;

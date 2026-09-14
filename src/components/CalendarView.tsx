@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { colorForClient } from '../lib/colors';
 import { formatCurrency, formatDate, formatMonthLabel, today } from '../lib/format';
 import type { Client, TimeEntry } from '../types';
+import { ChevronRightIcon } from './icons';
 import { Button, LabelBadge } from './ui';
 
 interface Props {
@@ -157,13 +158,14 @@ export function CalendarView({ entries, clients, onEditEntry }: Props) {
                   <button
                     type="button"
                     onClick={() => onEditEntry(e)}
-                    className="flex w-full items-center gap-2 rounded-md py-1.5 text-left text-sm hover:bg-slate-50"
+                    className="flex w-full items-center gap-2 rounded-md py-2 text-left text-base hover:bg-slate-50 active:bg-slate-100 sm:text-sm"
                   >
                     {content}
+                    <ChevronRightIcon className="h-5 w-5 shrink-0 text-slate-300" />
                   </button>
                 </li>
               ) : (
-                <li key={e.id} className="flex items-center gap-2 py-1.5 text-sm">
+                <li key={e.id} className="flex items-center gap-2 py-2 text-base sm:text-sm">
                   {content}
                 </li>
               );

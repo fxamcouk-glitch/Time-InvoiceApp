@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { BusinessSettings } from './components/BusinessSettings';
 import { CalendarPage } from './components/CalendarPage';
 import { ClientsView } from './components/ClientsView';
-import { BoxIcon, CalendarIcon, ClockIcon, ReceiptIcon, RefreshIcon, UsersIcon } from './components/icons';
+import { BoxIcon, CalendarIcon, ClockIcon, GearIcon, ReceiptIcon, RefreshIcon, UsersIcon } from './components/icons';
 import { InvoicesView } from './components/InvoicesView';
 import { MaterialsView } from './components/MaterialsView';
 import { TimeTracker } from './components/TimeTracker';
@@ -66,16 +66,17 @@ function App() {
         >
           <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
             <div>
-              <h1 className="text-base font-semibold text-slate-900 sm:text-lg">Hours &amp; Invoicing</h1>
-              <p className="hidden text-xs text-slate-400 sm:block">Track time, bill clients, get paid.</p>
+              <p className="hidden text-xs font-medium text-slate-400 sm:block">Hours &amp; Invoicing</p>
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-lg sm:font-semibold">
+                {TABS.find((t) => t.id === tab)?.label}
+              </h1>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <Button variant="ghost" onClick={handleRefresh} aria-label="Refresh">
                 <RefreshIcon className="h-5 w-5" />
               </Button>
-              <Button variant="secondary" onClick={() => setSettingsOpen(true)}>
-                <span className="sm:hidden">Settings</span>
-                <span className="hidden sm:inline">Business settings</span>
+              <Button variant="ghost" onClick={() => setSettingsOpen(true)} aria-label="Business settings">
+                <GearIcon className="h-5 w-5" />
               </Button>
             </div>
           </div>
@@ -88,13 +89,13 @@ function App() {
                   tab === t.id ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'
                 }`}
               >
-                {t.label === 'Time' ? 'Time Tracker' : t.label}
+                {t.label}
               </button>
             ))}
           </nav>
         </header>
 
-        <main className="mx-auto max-w-6xl px-4 py-6 pb-24 sm:px-6 sm:py-8 sm:pb-8">
+        <main className="mx-auto max-w-6xl px-4 py-6 pb-36 sm:px-6 sm:py-8 sm:pb-8">
           {tab === 'tracker' && (
             <TimeTracker
               clients={clients}
