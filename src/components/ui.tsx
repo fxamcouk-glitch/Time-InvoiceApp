@@ -1,4 +1,5 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, LabelHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
+import { forwardRef } from 'react';
+import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, LabelHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
 
 export function Button({
   className = '',
@@ -54,9 +55,16 @@ export function LabelBadge(props: LabelHTMLAttributes<HTMLSpanElement> & { child
   );
 }
 
-export function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <div className={`rounded-lg border border-slate-200 bg-white shadow-sm ${className}`}>{children}</div>;
-}
+export const Card = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(function Card(
+  { children, className = '', ...props },
+  ref,
+) {
+  return (
+    <div ref={ref} className={`rounded-lg border border-slate-200 bg-white shadow-sm ${className}`} {...props}>
+      {children}
+    </div>
+  );
+});
 
 export function EmptyState({ title, description }: { title: string; description: string }) {
   return (

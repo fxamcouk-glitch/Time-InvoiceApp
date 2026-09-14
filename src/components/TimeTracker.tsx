@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { formatCurrency, today } from '../lib/format';
 import { distanceMeters, geocodeAddress, getCurrentPosition, reverseGeocode, sleep } from '../lib/geo';
 import { newId } from '../lib/id';
@@ -66,6 +66,7 @@ export function TimeTracker({ clients, entries, onChange, onClientsChange }: Pro
   const [locationError, setLocationError] = useState<string | null>(null);
   const [capturedLocation, setCapturedLocation] = useState<EntryLocation | null>(null);
   const [suggestion, setSuggestion] = useState<{ clientId: string; distance: number } | null>(null);
+  const formRef = useRef<HTMLDivElement>(null);
 
   const clientMap = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients]);
 
@@ -167,6 +168,7 @@ export function TimeTracker({ clients, entries, onChange, onClientsChange }: Pro
     setLocationError(null);
     setCapturedLocation(null);
     setSuggestion(null);
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function remove(id: string) {
@@ -186,7 +188,7 @@ export function TimeTracker({ clients, entries, onChange, onClientsChange }: Pro
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-      <Card className="p-5 lg:col-span-1 h-fit">
+      <Card ref={formRef} className="p-5 lg:col-span-1 h-fit" style={{ scrollMarginTop: 'calc(env(safe-area-inset-top) + 90px)' }}>
         <h2 className="mb-4 text-sm font-semibold text-slate-800">{editingId ? 'Edit entry' : 'Log time'}</h2>
         <form onSubmit={submit} className="flex flex-col gap-3">
           <Field label="Client">

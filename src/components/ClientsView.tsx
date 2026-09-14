@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { formatCurrency } from '../lib/format';
 import { getCurrentPosition, reverseGeocode } from '../lib/geo';
 import { newId } from '../lib/id';
@@ -22,6 +22,7 @@ export function ClientsView({ clients, onChange }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const formRef = useRef<HTMLDivElement>(null);
 
   function resetForm() {
     setForm(emptyForm);
@@ -95,6 +96,7 @@ export function ClientsView({ clients, onChange }: Props) {
       lng: client.lng,
     });
     setLocationError(null);
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function remove(id: string) {
@@ -105,7 +107,7 @@ export function ClientsView({ clients, onChange }: Props) {
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-      <Card className="p-5 lg:col-span-1 h-fit">
+      <Card ref={formRef} className="p-5 lg:col-span-1 h-fit" style={{ scrollMarginTop: 'calc(env(safe-area-inset-top) + 90px)' }}>
         <h2 className="mb-4 text-sm font-semibold text-slate-800">{editingId ? 'Edit client' : 'New client'}</h2>
         <form onSubmit={submit} className="flex flex-col gap-3">
           <Field label="Name">

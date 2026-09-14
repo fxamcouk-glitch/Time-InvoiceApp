@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { formatCurrency, today } from '../lib/format';
 import { newId } from '../lib/id';
 import type { Client, MaterialEntry } from '../types';
@@ -18,6 +18,7 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
   const [form, setForm] = useState(() => emptyForm(clients));
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filterClientId, setFilterClientId] = useState<string>('all');
+  const formRef = useRef<HTMLDivElement>(null);
 
   const clientMap = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients]);
 
@@ -61,6 +62,7 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
       description: material.description,
       amount: String(material.amount),
     });
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function remove(id: string) {
@@ -80,7 +82,7 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-      <Card className="p-5 lg:col-span-1 h-fit">
+      <Card ref={formRef} className="p-5 lg:col-span-1 h-fit" style={{ scrollMarginTop: 'calc(env(safe-area-inset-top) + 90px)' }}>
         <h2 className="mb-4 text-sm font-semibold text-slate-800">{editingId ? 'Edit material' : 'Log material'}</h2>
         <form onSubmit={submit} className="flex flex-col gap-3">
           <Field label="Client">
