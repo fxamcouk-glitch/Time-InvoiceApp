@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Tesseract OCR assets copied from node_modules by scripts/copy-tesseract.mjs
+public/tesseract

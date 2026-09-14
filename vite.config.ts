@@ -29,6 +29,19 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
+        // OCR assets (~6 MB) are fetched on first receipt scan and then kept for offline use.
+        globIgnores: ['tesseract/**'],
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.includes('/tesseract/'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'tesseract-assets',
+              expiration: { maxEntries: 12, maxAgeSeconds: 60 * 60 * 24 * 90 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
       },
     }),
   ],
