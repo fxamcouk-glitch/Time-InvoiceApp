@@ -31,6 +31,12 @@ function App() {
   const [invoices, setInvoices] = useLocalStorage<Invoice[]>('hti.invoices', []);
   const [business, setBusiness] = useLocalStorage<BusinessInfo>('hti.business', defaultBusiness);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [pendingEditEntryId, setPendingEditEntryId] = useState<string | null>(null);
+
+  function editEntryFromCalendar(entry: TimeEntry) {
+    setPendingEditEntryId(entry.id);
+    setTab('tracker');
+  }
 
   const handleRefresh = useCallback(() => window.location.reload(), []);
   const { pullDistance, refreshing, threshold } = usePullToRefresh(handleRefresh);
@@ -90,9 +96,16 @@ function App() {
 
         <main className="mx-auto max-w-6xl px-4 py-6 pb-24 sm:px-6 sm:py-8 sm:pb-8">
           {tab === 'tracker' && (
-            <TimeTracker clients={clients} entries={entries} onChange={setEntries} onClientsChange={setClients} />
+            <TimeTracker
+              clients={clients}
+              entries={entries}
+              onChange={setEntries}
+              onClientsChange={setClients}
+              pendingEditEntryId={pendingEditEntryId}
+              onPendingEditHandled={() => setPendingEditEntryId(null)}
+            />
           )}
-          {tab === 'calendar' && <CalendarPage clients={clients} entries={entries} />}
+          {tab === 'calendar' && <CalendarPage clients={clients} entries={entries} onEditEntry={editEntryFromCalendar} />}
           {tab === 'materials' && <MaterialsView clients={clients} materials={materials} onChange={setMaterials} />}
           {tab === 'clients' && <ClientsView clients={clients} onChange={setClients} />}
           {tab === 'invoices' && (

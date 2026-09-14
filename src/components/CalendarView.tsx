@@ -2,11 +2,12 @@ import { useMemo, useState } from 'react';
 import { colorForClient } from '../lib/colors';
 import { formatCurrency, formatDate, formatMonthLabel, today } from '../lib/format';
 import type { Client, TimeEntry } from '../types';
-import { Button } from './ui';
+import { Button, LabelBadge } from './ui';
 
 interface Props {
   entries: TimeEntry[];
   clients: Client[];
+  onEditEntry?: (entry: TimeEntry) => void;
 }
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -37,7 +38,7 @@ function gridDays(cursor: string): string[] {
   return days;
 }
 
-export function CalendarView({ entries, clients }: Props) {
+export function CalendarView({ entries, clients, onEditEntry }: Props) {
   const [cursor, setCursor] = useState(() => monthCursorOf(today()));
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
@@ -137,17 +138,36 @@ export function CalendarView({ entries, clients }: Props) {
               {formatCurrency(selectedEntries.reduce((sum, e) => sum + e.hours * e.rate, 0))}
             </span>
           </div>
-          <ul className="space-y-2">
-            {selectedEntries.map((e) => (
-              <li key={e.id} className="flex items-center gap-2 text-sm">
-                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: colorForClient(e.clientId) }} />
-                <span className="min-w-0 flex-1 truncate text-slate-700">
-                  {clientMap.get(e.clientId)?.name ?? 'Unknown client'}
-                  {e.description && ` · ${e.description}`}
-                </span>
-                <span className="shrink-0 text-slate-500">{e.hours}h</span>
-              </li>
-            ))}
+          <ul className="space-y-1">
+            {selectedEntries.map((e) => {
+              const editable = !e.invoiceId && !!onEditEntry;
+              const content = (
+                <>
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: colorForClient(e.clientId) }} />
+                  <span className="min-w-0 flex-1 truncate text-slate-700">
+                    {clientMap.get(e.clientId)?.name ?? 'Unknown client'}
+                    {e.description && ` · ${e.description}`}
+                  </span>
+                  {e.invoiceId && <LabelBadge tone="blue">Invoiced</LabelBadge>}
+                  <span className="shrink-0 text-slate-500">{e.hours}h</span>
+                </>
+              );
+              return editable ? (
+                <li key={e.id}>
+                  <button
+                    type="button"
+                    onClick={() => onEditEntry(e)}
+                    className="flex w-full items-center gap-2 rounded-md py-1.5 text-left text-sm hover:bg-slate-50"
+                  >
+                    {content}
+                  </button>
+                </li>
+              ) : (
+                <li key={e.id} className="flex items-center gap-2 py-1.5 text-sm">
+                  {content}
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

@@ -6,9 +6,10 @@ import { Card, EmptyState, Select } from './ui';
 interface Props {
   clients: Client[];
   entries: TimeEntry[];
+  onEditEntry?: (entry: TimeEntry) => void;
 }
 
-export function CalendarPage({ clients, entries }: Props) {
+export function CalendarPage({ clients, entries, onEditEntry }: Props) {
   const [filterClientId, setFilterClientId] = useState('all');
 
   if (clients.length === 0) {
@@ -29,7 +30,7 @@ export function CalendarPage({ clients, entries }: Props) {
           ))}
         </Select>
       </div>
-      <CalendarView entries={visibleEntries} clients={clients} />
+      <CalendarView entries={visibleEntries} clients={clients} onEditEntry={onEditEntry} />
     </Card>
   );
 }

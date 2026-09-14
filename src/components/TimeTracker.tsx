@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatCurrency, today } from '../lib/format';
 import { distanceMeters, geocodeAddress, getCurrentPosition, reverseGeocode, sleep } from '../lib/geo';
 import { newId } from '../lib/id';
@@ -12,6 +12,8 @@ interface Props {
   entries: TimeEntry[];
   onChange: (entries: TimeEntry[]) => void;
   onClientsChange: (clients: Client[]) => void;
+  pendingEditEntryId?: string | null;
+  onPendingEditHandled?: () => void;
 }
 
 type ViewMode = 'list' | Granularity;
@@ -56,7 +58,7 @@ function emptyForm(clients: Client[]) {
   };
 }
 
-export function TimeTracker({ clients, entries, onChange, onClientsChange }: Props) {
+export function TimeTracker({ clients, entries, onChange, onClientsChange, pendingEditEntryId, onPendingEditHandled }: Props) {
   const [form, setForm] = useState(() => emptyForm(clients));
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filterClientId, setFilterClientId] = useState<string>('all');
@@ -170,6 +172,14 @@ export function TimeTracker({ clients, entries, onChange, onClientsChange }: Pro
     setSuggestion(null);
     formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
+
+  useEffect(() => {
+    if (!pendingEditEntryId) return;
+    const entry = entries.find((e) => e.id === pendingEditEntryId);
+    if (entry) edit(entry);
+    onPendingEditHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingEditEntryId]);
 
   function remove(id: string) {
     onChange(entries.filter((e) => e.id !== id));
