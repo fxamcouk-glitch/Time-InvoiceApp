@@ -1,3 +1,4 @@
+import type { CropRect } from './crop';
 import { recognizeReceipt } from './ocr';
 import type { OcrProgress } from './ocr';
 import { parseReceipt } from './receipt';
@@ -23,12 +24,12 @@ function score(parsed: ParsedReceipt): number {
  * if the items it finds don't add up to the total, a second plain-greyscale pass is tried and the
  * better reading wins.
  */
-export async function scanReceipt(file: Blob, onProgress?: (p: OcrProgress) => void): Promise<ScanResult> {
-  const firstText = await recognizeReceipt(file, onProgress, 'adaptive');
+export async function scanReceipt(file: Blob, onProgress?: (p: OcrProgress) => void, crop?: CropRect | null): Promise<ScanResult> {
+  const firstText = await recognizeReceipt(file, onProgress, 'adaptive', crop);
   const first: ScanResult = { text: firstText, parsed: parseReceipt(firstText) };
   if (first.parsed.itemsMatchTotal && first.parsed.merchant && first.parsed.date) return first;
 
-  const secondText = await recognizeReceipt(file, (p) => onProgress?.({ ...p, pass: 2 }), 'plain');
+  const secondText = await recognizeReceipt(file, (p) => onProgress?.({ ...p, pass: 2 }), 'plain', crop);
   const second: ScanResult = { text: secondText, parsed: parseReceipt(secondText) };
   return score(second.parsed) > score(first.parsed) ? second : first;
 }

@@ -3,6 +3,9 @@
  * keyed by the material entry's id. Photos are compressed before saving so a
  * typical receipt is well under 200 KB.
  */
+import { cropToPixels } from './crop';
+import type { CropRect } from './crop';
+
 const DB_NAME = 'hti-photos';
 const STORE = 'photos';
 const MAX_SIDE = 1400;
@@ -60,15 +63,16 @@ function loadImage(file: Blob): Promise<HTMLImageElement> {
 }
 
 /** Downscales a camera photo and re-encodes it as JPEG so it is small enough to keep on the phone. */
-export async function compressPhoto(file: Blob): Promise<Blob> {
+export async function compressPhoto(file: Blob, crop?: CropRect | null): Promise<Blob> {
   const img = await loadImage(file);
-  const scale = Math.min(1, MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+  const { sx, sy, sw, sh } = crop ? cropToPixels(crop, img.naturalWidth, img.naturalHeight) : { sx: 0, sy: 0, sw: img.naturalWidth, sh: img.naturalHeight };
+  const scale = Math.min(1, MAX_SIDE / Math.max(sw, sh));
   const canvas = document.createElement('canvas');
-  canvas.width = Math.round(img.naturalWidth * scale);
-  canvas.height = Math.round(img.naturalHeight * scale);
+  canvas.width = Math.max(1, Math.round(sw * scale));
+  canvas.height = Math.max(1, Math.round(sh * scale));
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Could not process that photo.');
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Could not compress that photo.'))), 'image/jpeg', JPEG_QUALITY);
   });

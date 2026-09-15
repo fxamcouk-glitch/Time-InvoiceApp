@@ -1,4 +1,6 @@
 import type { Worker } from 'tesseract.js';
+import { cropToPixels } from './crop';
+import type { CropRect } from './crop';
 
 /** Longest side the photo is scaled down to before OCR; keeps it fast on a phone. */
 const MAX_SIDE = 1800;
@@ -108,15 +110,16 @@ function greyscale(data: Uint8ClampedArray) {
 }
 
 /** Draws the photo onto a canvas, downscaled and cleaned up, which OCR reads faster and more reliably. */
-export async function prepareImage(file: Blob, mode: PrepareMode): Promise<HTMLCanvasElement> {
+export async function prepareImage(file: Blob, mode: PrepareMode, crop?: CropRect | null): Promise<HTMLCanvasElement> {
   const img = await loadImage(file);
-  const scale = Math.min(1, MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+  const { sx, sy, sw, sh } = crop ? cropToPixels(crop, img.naturalWidth, img.naturalHeight) : { sx: 0, sy: 0, sw: img.naturalWidth, sh: img.naturalHeight };
+  const scale = Math.min(1, MAX_SIDE / Math.max(sw, sh));
   const canvas = document.createElement('canvas');
-  canvas.width = Math.round(img.naturalWidth * scale);
-  canvas.height = Math.round(img.naturalHeight * scale);
+  canvas.width = Math.max(1, Math.round(sw * scale));
+  canvas.height = Math.max(1, Math.round(sh * scale));
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) throw new Error('Could not process that photo.');
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   if (mode === 'adaptive') adaptiveThreshold(imageData.data, canvas.width, canvas.height);
   else greyscale(imageData.data);
@@ -125,10 +128,15 @@ export async function prepareImage(file: Blob, mode: PrepareMode): Promise<HTMLC
 }
 
 /** Runs on-device OCR over a receipt photo and returns the recognised text. The photo never leaves the phone. */
-export async function recognizeReceipt(file: Blob, onProgress?: (p: OcrProgress) => void, mode: PrepareMode = 'adaptive'): Promise<string> {
+export async function recognizeReceipt(
+  file: Blob,
+  onProgress?: (p: OcrProgress) => void,
+  mode: PrepareMode = 'adaptive',
+  crop?: CropRect | null,
+): Promise<string> {
   progressListener = onProgress ?? null;
   try {
-    const [worker, image] = await Promise.all([getWorker(), prepareImage(file, mode)]);
+    const [worker, image] = await Promise.all([getWorker(), prepareImage(file, mode, crop)]);
     const result = await worker.recognize(image);
     return result.data.text;
   } finally {

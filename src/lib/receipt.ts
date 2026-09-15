@@ -133,6 +133,7 @@ function cleanItemName(raw: string): string {
     .replace(/(?:£|GBP\s?)?-?\d{1,5}[.,]\d{2}\b/g, ' ') // prices
     .replace(/\b\d{6,}\b/g, ' ') // barcodes (often with digits lost)
     .replace(/[^A-Za-z0-9&'’/%.,\- ]+/g, ' ')
+    .replace(/(?<![A-Za-z])['’]|['’](?![A-Za-z])/g, ' ') // stray quotes; keep the one in "O'Neill"
     .replace(/-\s+(?=[A-Za-z])/g, '-') // "MULTI- PURPOSE" (noise split a hyphenated word)
     .replace(/\s+/g, ' ')
     .replace(/^[\W_]+|[\W_]+$/g, '')

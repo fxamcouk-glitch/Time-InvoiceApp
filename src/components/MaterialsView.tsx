@@ -6,7 +6,9 @@ import { compressPhoto, deletePhoto, savePhoto } from '../lib/photos';
 import { describeReceipt } from '../lib/receipt';
 import { scanReceipt } from '../lib/scan';
 import type { Client, MaterialEntry } from '../types';
+import type { CropRect } from '../lib/crop';
 import { CameraIcon, ChevronRightIcon } from './icons';
+import { ReceiptCropper } from './ReceiptCropper';
 import { ReceiptThumb, ReceiptViewer } from './ReceiptPhoto';
 import { Sheet } from './Sheet';
 import { AddButton, Button, Card, EmptyState, Field, Input, LabelBadge, Select, Textarea } from './ui';
@@ -62,6 +64,8 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
   const [scan, setScan] = useState<ScanState>({ status: 'idle' });
   const [photo, setPhoto] = useState<PhotoSource>(null);
   const [review, setReview] = useState<ScanReview | null>(null);
+  /** A freshly chosen photo waiting for the user to mark the receipt area. */
+  const [cropping, setCropping] = useState<Blob | null>(null);
   const [viewingPhoto, setViewingPhoto] = useState<PhotoSource>(null);
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -74,6 +78,7 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
     setScan({ status: 'idle' });
     setPhoto(null);
     setReview(null);
+    setCropping(null);
     setSheetOpen(true);
   }
 
@@ -84,6 +89,7 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
     setScan({ status: 'idle' });
     setPhoto(null);
     setReview(null);
+    setCropping(null);
   }
 
   function edit(material: MaterialEntry) {
@@ -97,22 +103,29 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
     setScan({ status: 'idle' });
     setPhoto(material.hasPhoto ? material.id : null);
     setReview(null);
+    setCropping(null);
     setSheetOpen(true);
   }
 
-  async function handleReceiptPhoto(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleReceiptPhoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
+    setScan({ status: 'idle' });
+    setCropping(file);
+  }
 
-    // Keep the photo with the entry regardless of how the scan goes.
-    compressPhoto(file)
+  async function scanCropped(file: Blob, crop: CropRect | null) {
+    setCropping(null);
+
+    // Keep the (cropped) photo with the entry regardless of how the scan goes.
+    compressPhoto(file, crop)
       .then((blob) => setPhoto(blob))
       .catch((err) => console.error(err));
 
     setScan({ status: 'working', progress: { stage: 'loading', progress: 0 } });
     try {
-      const { parsed } = await scanReceipt(file, (progress) => setScan({ status: 'working', progress }));
+      const { parsed } = await scanReceipt(file, (progress) => setScan({ status: 'working', progress }), crop);
       const description = describeReceipt(parsed);
       // Hand the results to the user to check against the photo; nothing goes into the entry until they approve.
       setReview({
@@ -315,8 +328,14 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
 
       {sheetOpen && (
         // Keyed so the sheet remounts (and scrolls back to the top) when switching between the review and the form.
-        <Sheet key={review ? 'review' : 'form'} title={review ? 'Check the scan' : editingId ? 'Edit material' : 'Log material'} onClose={closeSheet}>
-          {review ? (
+        <Sheet
+          key={cropping ? 'crop' : review ? 'review' : 'form'}
+          title={cropping ? 'Crop the receipt' : review ? 'Check the scan' : editingId ? 'Edit material' : 'Log material'}
+          onClose={closeSheet}
+        >
+          {cropping ? (
+            <ReceiptCropper file={cropping} onConfirm={(crop) => scanCropped(cropping, crop)} onCancel={() => setCropping(null)} />
+          ) : review ? (
             <div className="flex flex-col gap-3" data-testid="scan-review">
               <p className="text-sm text-slate-500">
                 Compare what was read with the receipt and correct anything that is wrong. Nothing is saved yet.
