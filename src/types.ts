@@ -32,6 +32,8 @@ export interface MaterialEntry {
   description: string;
   amount: number;
   invoiceId: string | null;
+  /** True when a receipt photo is stored for this entry (see src/lib/photos.ts). */
+  hasPhoto?: boolean;
 }
 
 export type InvoiceStatus = 'draft' | 'sent' | 'paid';

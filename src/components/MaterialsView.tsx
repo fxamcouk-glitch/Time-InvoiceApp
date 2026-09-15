@@ -3,9 +3,11 @@ import { formatCurrency, formatDayHeading, today } from '../lib/format';
 import { newId } from '../lib/id';
 import { recognizeReceipt } from '../lib/ocr';
 import type { OcrProgress } from '../lib/ocr';
+import { compressPhoto, deletePhoto, savePhoto } from '../lib/photos';
 import { parseReceipt } from '../lib/receipt';
 import type { Client, MaterialEntry } from '../types';
 import { CameraIcon, ChevronRightIcon } from './icons';
+import { ReceiptThumb, ReceiptViewer } from './ReceiptPhoto';
 import { Sheet } from './Sheet';
 import { AddButton, Button, Card, EmptyState, Field, Input, LabelBadge, Select, Textarea } from './ui';
 
@@ -25,6 +27,9 @@ type ScanState =
   | { status: 'done'; message: string }
   | { status: 'error'; message: string };
 
+/** The receipt photo attached to the entry being edited: a stored photo (material id), a new one (Blob), or none. */
+type PhotoSource = string | Blob | null;
+
 function scanLabel(progress: OcrProgress): string {
   if (progress.stage === 'loading') return 'Preparing scanner…';
   return `Reading receipt… ${Math.round(progress.progress * 100)}%`;
@@ -36,6 +41,9 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [filterClientId, setFilterClientId] = useState<string>('all');
   const [scan, setScan] = useState<ScanState>({ status: 'idle' });
+  const [photo, setPhoto] = useState<PhotoSource>(null);
+  const [viewingPhoto, setViewingPhoto] = useState<PhotoSource>(null);
+  const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const clientMap = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients]);
@@ -44,6 +52,7 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
     setForm(emptyForm(clients));
     setEditingId(null);
     setScan({ status: 'idle' });
+    setPhoto(null);
     setSheetOpen(true);
   }
 
@@ -52,12 +61,31 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
     setForm(emptyForm(clients));
     setEditingId(null);
     setScan({ status: 'idle' });
+    setPhoto(null);
+  }
+
+  function edit(material: MaterialEntry) {
+    setEditingId(material.id);
+    setForm({
+      clientId: material.clientId,
+      date: material.date,
+      description: material.description,
+      amount: String(material.amount),
+    });
+    setScan({ status: 'idle' });
+    setPhoto(material.hasPhoto ? material.id : null);
+    setSheetOpen(true);
   }
 
   async function handleReceiptPhoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
+
+    // Keep the photo with the entry regardless of how the scan goes.
+    compressPhoto(file)
+      .then((blob) => setPhoto(blob))
+      .catch((err) => console.error(err));
 
     setScan({ status: 'working', progress: { stage: 'loading', progress: 0 } });
     try {
@@ -77,51 +105,61 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
       setScan(
         found.length > 0
           ? { status: 'done', message: `Found ${found.join(' · ')}. Check the details before saving.` }
-          : { status: 'error', message: "Couldn't read a total from that photo. Try a sharper, straight-on shot, or enter it by hand." },
+          : { status: 'error', message: "Couldn't read a total from that photo, but it's attached. Enter the cost by hand." },
       );
     } catch (err) {
       console.error(err);
       setScan({
         status: 'error',
         message: navigator.onLine
-          ? "Couldn't scan that photo. Please enter the details by hand."
-          : 'Scanning needs an internet connection the first time it is used.',
+          ? "Couldn't scan that photo, but it's attached. Please enter the details by hand."
+          : 'Scanning needs an internet connection the first time it is used. The photo is still attached.',
       });
     }
   }
 
-  function edit(material: MaterialEntry) {
-    setEditingId(material.id);
-    setForm({
-      clientId: material.clientId,
-      date: material.date,
-      description: material.description,
-      amount: String(material.amount),
-    });
-    setSheetOpen(true);
-  }
-
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     const amount = Number(form.amount);
-    if (!form.clientId || !amount || amount <= 0) return;
+    if (!form.clientId || !amount || amount <= 0 || saving) return;
 
-    if (editingId) {
+    const id = editingId ?? newId();
+    const existing = editingId ? materials.find((m) => m.id === editingId) : undefined;
+
+    setSaving(true);
+    let hasPhoto = existing?.hasPhoto ?? false;
+    try {
+      if (photo instanceof Blob) {
+        await savePhoto(id, photo);
+        hasPhoto = true;
+      } else if (photo === null && existing?.hasPhoto) {
+        await deletePhoto(id);
+        hasPhoto = false;
+      }
+    } catch (err) {
+      console.error(err);
+      alert("The receipt photo couldn't be saved on this device, so the entry will be saved without it.");
+    } finally {
+      setSaving(false);
+    }
+
+    if (existing) {
       onChange(
         materials.map((m) =>
-          m.id === editingId
-            ? { ...m, clientId: form.clientId, date: form.date, description: form.description.trim(), amount }
+          m.id === id
+            ? { ...m, clientId: form.clientId, date: form.date, description: form.description.trim(), amount, hasPhoto }
             : m,
         ),
       );
     } else {
       const material: MaterialEntry = {
-        id: newId(),
+        id,
         clientId: form.clientId,
         date: form.date,
         description: form.description.trim(),
         amount,
         invoiceId: null,
+        hasPhoto,
       };
       onChange([material, ...materials]);
     }
@@ -130,6 +168,7 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
 
   function remove(id: string) {
     if (!confirm('Delete this material?')) return;
+    deletePhoto(id).catch((err) => console.error(err));
     onChange(materials.filter((m) => m.id !== id));
     closeSheet();
   }
@@ -188,6 +227,7 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
                   {dayMaterials.map((material) => {
                     const content = (
                       <>
+                        {material.hasPhoto && <ReceiptThumb source={material.id} className="h-11 w-11 shrink-0" />}
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-base font-medium text-slate-800 sm:text-sm">
                             {clientMap.get(material.clientId)?.name ?? 'Unknown client'}
@@ -205,6 +245,15 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
                           <div className="flex items-center gap-3 px-4 py-3 sm:px-5">
                             {content}
                             <LabelBadge tone="blue">Invoiced</LabelBadge>
+                            {material.hasPhoto && (
+                              <button
+                                type="button"
+                                onClick={() => setViewingPhoto(material.id)}
+                                className="text-sm text-indigo-600"
+                              >
+                                Receipt
+                              </button>
+                            )}
                           </div>
                         ) : (
                           <button
@@ -245,7 +294,7 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
               className="w-full"
             >
               <CameraIcon className="h-5 w-5" />
-              {scan.status === 'working' ? scanLabel(scan.progress) : 'Scan receipt'}
+              {scan.status === 'working' ? scanLabel(scan.progress) : photo ? 'Scan a different receipt' : 'Scan receipt'}
             </Button>
             {scan.status === 'working' && (
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200" role="progressbar">
@@ -264,6 +313,21 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
               <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700" role="status">
                 {scan.message}
               </p>
+            )}
+            {photo && (
+              <div className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2" data-testid="receipt-photo">
+                <ReceiptThumb source={photo} className="h-14 w-14" onClick={() => setViewingPhoto(photo)} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-slate-700">Receipt photo attached</p>
+                  <p className="text-xs text-slate-500">Kept on this phone with the entry.</p>
+                </div>
+                <button type="button" onClick={() => setViewingPhoto(photo)} className="text-sm font-medium text-indigo-600">
+                  View
+                </button>
+                <button type="button" onClick={() => setPhoto(null)} className="text-sm font-medium text-red-600">
+                  Remove
+                </button>
+              </div>
             )}
             <Field label="Client">
               <Select value={form.clientId} onChange={(e) => setForm({ ...form, clientId: e.target.value })} required>
@@ -296,8 +360,8 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
                 required
               />
             </Field>
-            <Button type="submit" className="mt-1 w-full">
-              {editingId ? 'Save changes' : 'Add material'}
+            <Button type="submit" className="mt-1 w-full" disabled={saving}>
+              {saving ? 'Saving…' : editingId ? 'Save changes' : 'Add material'}
             </Button>
             {editingId && (
               <Button type="button" variant="danger" onClick={() => remove(editingId)} className="w-full">
@@ -307,6 +371,8 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
           </form>
         </Sheet>
       )}
+
+      {viewingPhoto && <ReceiptViewer source={viewingPhoto} onClose={() => setViewingPhoto(null)} />}
     </div>
   );
 }
