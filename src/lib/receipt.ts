@@ -24,7 +24,12 @@ const NOISE_LINE = /\b(receipt|invoice|vat\s*(no|reg|number)|tel|phone|www\.|htt
 const ITEMS_END = /\b(sub\s*-?\s*total|total|amount\s*due|to\s*pay|balance\s*due|\d+\s*items?\b|items?\s*\(s\)|items?\s*:)/i;
 /** Lines inside the purchases region that are never items. */
 const ITEM_NOISE = /\b(tel|phone|email|e-mail|www\.|http|@|vat|returns?|policy|overleaf|thank|welcome|cashier|served|till|store|branch|opening|hours|receipt|invoice|date|time|order|ref|reference|auth|card|change|cash|tendered|qty|price|description)\b|\d{2}[/.-]\d{2}[/.-]\d{2,4}|\d{1,2}:\d{2}/i;
-const QTY_LINE = /(?:^|\s)(\d{1,3})\s?[xX×]\s+(.+)$/;
+/** "2x NAME"; OCR often turns the x into c, « or *, and a 1 into I or l. */
+const QTY_LINE = /(?:^|\s)(\d{1,3}|[Il])\s?[xX×cC«»*]\s+(.+)$/;
+
+function parseQuantity(raw: string): number {
+  return /^[Il]$/.test(raw) ? 1 : Number(raw);
+}
 
 /** Shops a tradesperson is likely to use; matched anywhere in the text (with common OCR slips for B&Q). */
 const KNOWN_MERCHANTS: [RegExp, string][] = [
@@ -73,6 +78,12 @@ function letterCount(text: string): number {
   return (text.match(/[A-Za-z]/g) ?? []).length;
 }
 
+/** A product name has at least one real word in it and isn't mostly digits or noise ("a ot Rp 108999" is not). */
+function looksLikeName(name: string): boolean {
+  const compact = name.replace(/\s/g, '');
+  return letterCount(name) >= 4 && letterCount(name) >= compact.length * 0.5 && name.split(' ').some((word) => letterCount(word) >= 4);
+}
+
 export function findAmount(lines: string[]): number | undefined {
   // Prefer a "TOTAL"-style line; the last such line on a receipt is usually the grand total.
   const totalLines = lines.filter((l) => TOTAL_LINE.test(l) && !NOT_TOTAL_LINE.test(l));
@@ -108,7 +119,9 @@ export function findMerchant(lines: string[]): string | undefined {
     const letters = letterCount(line);
     if (letters < 4 || letters < line.length * 0.7) continue;
     // Photo noise tends to OCR as short fragments ("Ay PT"); a real name has a proper word in it.
-    if (!line.split(' ').some((word) => letterCount(word) >= 4)) continue;
+    const words = line.split(' ');
+    if (!words.some((word) => letterCount(word) >= 4)) continue;
+    if (words.filter((word) => letterCount(word) >= 3).length < words.length / 2) continue;
     if (NOISE_LINE.test(line)) continue;
     return line.length > 40 ? line.slice(0, 40).trim() : line;
   }
@@ -118,14 +131,14 @@ export function findMerchant(lines: string[]): string | undefined {
 function cleanItemName(raw: string): string {
   let name = cleanNumbers(raw)
     .replace(/(?:£|GBP\s?)?-?\d{1,5}[.,]\d{2}\b/g, ' ') // prices
-    .replace(/\b\d{8,}\b/g, ' ') // barcodes
+    .replace(/\b\d{6,}\b/g, ' ') // barcodes (often with digits lost)
     .replace(/[^A-Za-z0-9&'’/%.,\- ]+/g, ' ')
     .replace(/-\s+(?=[A-Za-z])/g, '-') // "MULTI- PURPOSE" (noise split a hyphenated word)
     .replace(/\s+/g, ' ')
     .replace(/^[\W_]+|[\W_]+$/g, '')
     .trim();
-  // Stray single characters at the end are usually photo noise ("GRIT 20KG 3").
-  name = name.replace(/(\s+[A-Za-z0-9]){1,2}$/, '').trim();
+  // Stray short tokens at the end are usually photo noise ("GRIT 20KG 3", "SAND 20KG LT"); keep sizes like "5L".
+  name = name.replace(/(\s+(?:[A-Za-z0-9]|[A-Za-z]{2})){1,2}$/, '').trim();
   return name;
 }
 
@@ -143,7 +156,7 @@ export function findItems(lines: string[]): ReceiptItem[] {
 
     if (qty) {
       const name = cleanItemName(qty[2]);
-      if (letterCount(name) < 4) continue;
+      if (!looksLikeName(name)) continue;
       let price = prices.length > 0 ? prices[prices.length - 1] : undefined;
       if (price === undefined && i + 1 < end) {
         // "2x NAME" with the barcode and prices on the next line.
@@ -153,27 +166,27 @@ export function findItems(lines: string[]): ReceiptItem[] {
           i++;
         }
       }
-      items.push({ quantity: Number(qty[1]), name, price });
+      items.push({ quantity: parseQuantity(qty[1]), name, price });
       continue;
     }
 
     if (prices.length > 0) {
       // "NAME 12.98" on one line; ignore barcode/price-only lines and obvious noise.
       const name = cleanItemName(line);
-      if (letterCount(name) < 4 || /\d{8,}/.test(line)) continue;
+      if (!looksLikeName(name) || /\d{6,}/.test(line)) continue;
       items.push({ quantity: 1, name, price: prices[prices.length - 1] });
       continue;
     }
 
     if (i + 1 < end) {
       // "NAME" or "1 NAME" (the "x" often gets lost) followed by a barcode/price line.
-      const bare = line.match(/^(\d{1,2})\s+(.+)$/);
+      // Allow a couple of short noise tokens before the quantity ("ee PEE 2 MULTI-PURPOSE ...").
+      const bare = line.match(/^(?:\S{1,4}\s+){0,2}(\d{1,2})\s+(.+)$/);
       const name = cleanItemName(bare ? bare[2] : line);
       const next = lines[i + 1];
       const nextPrices = moneyValues(next);
-      const nextIsPriceLine = nextPrices.length > 0 && (/\d{8,}/.test(next) || letterCount(next) <= 2) && !ITEM_NOISE.test(next);
-      const looksLikeName = letterCount(name) >= 4 && letterCount(name) >= name.replace(/\s/g, '').length * 0.5;
-      if (looksLikeName && nextIsPriceLine) {
+      const nextIsPriceLine = nextPrices.length > 0 && (/\d{6,}/.test(next) || letterCount(next) <= 2) && !ITEM_NOISE.test(next);
+      if (looksLikeName(name) && nextIsPriceLine) {
         items.push({ quantity: bare ? Number(bare[1]) : 1, name, price: nextPrices[nextPrices.length - 1] });
         i++;
       }

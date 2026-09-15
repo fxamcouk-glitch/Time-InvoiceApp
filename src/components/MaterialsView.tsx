@@ -1,10 +1,10 @@
 import { useMemo, useRef, useState } from 'react';
 import { formatCurrency, formatDayHeading, today } from '../lib/format';
 import { newId } from '../lib/id';
-import { recognizeReceipt } from '../lib/ocr';
 import type { OcrProgress } from '../lib/ocr';
 import { compressPhoto, deletePhoto, savePhoto } from '../lib/photos';
-import { describeReceipt, parseReceipt } from '../lib/receipt';
+import { describeReceipt } from '../lib/receipt';
+import { scanReceipt } from '../lib/scan';
 import type { Client, MaterialEntry } from '../types';
 import { CameraIcon, ChevronRightIcon } from './icons';
 import { ReceiptThumb, ReceiptViewer } from './ReceiptPhoto';
@@ -50,7 +50,8 @@ function ReadBadge({ found }: { found: boolean }) {
 
 function scanLabel(progress: OcrProgress): string {
   if (progress.stage === 'loading') return 'Preparing scanner…';
-  return `Reading receipt… ${Math.round(progress.progress * 100)}%`;
+  const pct = Math.round(progress.progress * 100);
+  return progress.pass === 2 ? `Taking a second look… ${pct}%` : `Reading receipt… ${pct}%`;
 }
 
 export function MaterialsView({ clients, materials, onChange }: Props) {
@@ -111,8 +112,7 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
 
     setScan({ status: 'working', progress: { stage: 'loading', progress: 0 } });
     try {
-      const text = await recognizeReceipt(file, (progress) => setScan({ status: 'working', progress }));
-      const parsed = parseReceipt(text);
+      const { parsed } = await scanReceipt(file, (progress) => setScan({ status: 'working', progress }));
       const description = describeReceipt(parsed);
       // Hand the results to the user to check against the photo; nothing goes into the entry until they approve.
       setReview({
