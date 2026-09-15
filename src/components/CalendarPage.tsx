@@ -1,15 +1,17 @@
 import { useState } from 'react';
-import type { Client, TimeEntry } from '../types';
+import type { Client, MaterialEntry, TimeEntry } from '../types';
 import { CalendarView } from './CalendarView';
 import { Card, EmptyState, Select } from './ui';
 
 interface Props {
   clients: Client[];
   entries: TimeEntry[];
+  materials: MaterialEntry[];
   onEditEntry?: (entry: TimeEntry) => void;
+  onEditMaterial?: (material: MaterialEntry) => void;
 }
 
-export function CalendarPage({ clients, entries, onEditEntry }: Props) {
+export function CalendarPage({ clients, entries, materials, onEditEntry, onEditMaterial }: Props) {
   const [filterClientId, setFilterClientId] = useState('all');
 
   if (clients.length === 0) {
@@ -17,6 +19,7 @@ export function CalendarPage({ clients, entries, onEditEntry }: Props) {
   }
 
   const visibleEntries = entries.filter((e) => filterClientId === 'all' || e.clientId === filterClientId);
+  const visibleMaterials = materials.filter((m) => filterClientId === 'all' || m.clientId === filterClientId);
 
   return (
     <Card>
@@ -30,7 +33,13 @@ export function CalendarPage({ clients, entries, onEditEntry }: Props) {
           ))}
         </Select>
       </div>
-      <CalendarView entries={visibleEntries} clients={clients} onEditEntry={onEditEntry} />
+      <CalendarView
+        entries={visibleEntries}
+        materials={visibleMaterials}
+        clients={clients}
+        onEditEntry={onEditEntry}
+        onEditMaterial={onEditMaterial}
+      />
     </Card>
   );
 }

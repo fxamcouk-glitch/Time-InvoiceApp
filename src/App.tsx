@@ -32,10 +32,16 @@ function App() {
   const [business, setBusiness] = useLocalStorage<BusinessInfo>('hti.business', defaultBusiness);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pendingEditEntryId, setPendingEditEntryId] = useState<string | null>(null);
+  const [pendingEditMaterialId, setPendingEditMaterialId] = useState<string | null>(null);
 
   function editEntryFromCalendar(entry: TimeEntry) {
     setPendingEditEntryId(entry.id);
     setTab('tracker');
+  }
+
+  function editMaterialFromCalendar(material: MaterialEntry) {
+    setPendingEditMaterialId(material.id);
+    setTab('materials');
   }
 
   const handleRefresh = useCallback(() => window.location.reload(), []);
@@ -106,8 +112,24 @@ function App() {
               onPendingEditHandled={() => setPendingEditEntryId(null)}
             />
           )}
-          {tab === 'calendar' && <CalendarPage clients={clients} entries={entries} onEditEntry={editEntryFromCalendar} />}
-          {tab === 'materials' && <MaterialsView clients={clients} materials={materials} onChange={setMaterials} />}
+          {tab === 'calendar' && (
+            <CalendarPage
+              clients={clients}
+              entries={entries}
+              materials={materials}
+              onEditEntry={editEntryFromCalendar}
+              onEditMaterial={editMaterialFromCalendar}
+            />
+          )}
+          {tab === 'materials' && (
+            <MaterialsView
+              clients={clients}
+              materials={materials}
+              onChange={setMaterials}
+              pendingEditMaterialId={pendingEditMaterialId}
+              onPendingEditHandled={() => setPendingEditMaterialId(null)}
+            />
+          )}
           {tab === 'clients' && <ClientsView clients={clients} onChange={setClients} />}
           {tab === 'invoices' && (
             <InvoicesView

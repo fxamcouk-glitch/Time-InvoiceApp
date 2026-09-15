@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatCurrency, formatDayHeading, today } from '../lib/format';
 import { newId } from '../lib/id';
 import type { OcrProgress } from '../lib/ocr';
@@ -17,6 +17,9 @@ interface Props {
   clients: Client[];
   materials: MaterialEntry[];
   onChange: (materials: MaterialEntry[]) => void;
+  /** Set by the Calendar to open a material for editing on arrival. */
+  pendingEditMaterialId?: string | null;
+  onPendingEditHandled?: () => void;
 }
 
 function emptyForm(clients: Client[]) {
@@ -56,7 +59,7 @@ function scanLabel(progress: OcrProgress): string {
   return progress.pass === 2 ? `Taking a second look… ${pct}%` : `Reading receipt… ${pct}%`;
 }
 
-export function MaterialsView({ clients, materials, onChange }: Props) {
+export function MaterialsView({ clients, materials, onChange, pendingEditMaterialId, onPendingEditHandled }: Props) {
   const [form, setForm] = useState(() => emptyForm(clients));
   const [editingId, setEditingId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -106,6 +109,14 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
     setCropping(null);
     setSheetOpen(true);
   }
+
+  useEffect(() => {
+    if (!pendingEditMaterialId) return;
+    const material = materials.find((m) => m.id === pendingEditMaterialId);
+    if (material) edit(material);
+    onPendingEditHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingEditMaterialId]);
 
   function handleReceiptPhoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
