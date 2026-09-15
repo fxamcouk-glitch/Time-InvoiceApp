@@ -1,15 +1,58 @@
-/** Pulls the useful bits (total, shop name, date) out of OCR text from a receipt. */
+/** Pulls the useful bits (total, shop name, date, line items) out of OCR text from a receipt. */
+export interface ReceiptItem {
+  quantity: number;
+  name: string;
+  /** Line total, if it could be read. */
+  price?: number;
+}
+
 export interface ParsedReceipt {
   amount?: number;
   merchant?: string;
   /** ISO yyyy-mm-dd */
   date?: string;
+  items: ReceiptItem[];
+  /** True when the item prices add up to the total, i.e. the item list is probably complete. */
+  itemsMatchTotal: boolean;
 }
 
-const MONEY = /(?:£|GBP\s?)?(\d{1,5})[.,](\d{2})\b/g;
+const MONEY = /(?:£|GBP\s?)?-?(\d{1,5})[.,](\d{2})\b/g;
 const TOTAL_LINE = /\b(total|amount\s*due|to\s*pay|balance\s*due|grand\s*total|card|visa|mastercard|debit|credit)\b/i;
 const NOT_TOTAL_LINE = /\b(sub\s*-?\s*total|vat|tax|change|cash\s*back|savings?|discount|points|balance\s*(before|remaining))\b/i;
 const NOISE_LINE = /\b(receipt|invoice|vat\s*(no|reg|number)|tel|phone|www\.|http|@|thank|welcome|order|till|cashier|served|store\s*(no|number)|customer|copy)\b|^[\d\s\W]*$/i;
+/** Where the list of purchases ends. */
+const ITEMS_END = /\b(sub\s*-?\s*total|total|amount\s*due|to\s*pay|balance\s*due|\d+\s*items?\b|items?\s*\(s\)|items?\s*:)/i;
+/** Lines inside the purchases region that are never items. */
+const ITEM_NOISE = /\b(tel|phone|email|e-mail|www\.|http|@|vat|returns?|policy|overleaf|thank|welcome|cashier|served|till|store|branch|opening|hours|receipt|invoice|date|time|order|ref|reference|auth|card|change|cash|tendered|qty|price|description)\b|\d{2}[/.-]\d{2}[/.-]\d{2,4}|\d{1,2}:\d{2}/i;
+const QTY_LINE = /(?:^|\s)(\d{1,3})\s?[xX×]\s+(.+)$/;
+
+/** Shops a tradesperson is likely to use; matched anywhere in the text (with common OCR slips for B&Q). */
+const KNOWN_MERCHANTS: [RegExp, string][] = [
+  [/\bB\s*[&a8e]\s*Q\b/i, 'B&Q'],
+  [/\bscrewfix\b/i, 'Screwfix'],
+  [/\btoolstation\b/i, 'Toolstation'],
+  [/\bwickes\b/i, 'Wickes'],
+  [/\btravis\s*perkins\b/i, 'Travis Perkins'],
+  [/\bjewson\b/i, 'Jewson'],
+  [/\bhomebase\b/i, 'Homebase'],
+  [/\bselco\b/i, 'Selco'],
+  [/\bhowdens\b/i, 'Howdens'],
+  [/\bbuildbase\b/i, 'Buildbase'],
+  [/\bhuws\s*gray\b/i, 'Huws Gray'],
+  [/\bdobbies\b/i, 'Dobbies'],
+  [/\bhalfords\b/i, 'Halfords'],
+  [/\bamazon\b/i, 'Amazon'],
+  [/\btesco\b/i, 'Tesco'],
+  [/\bsainsbury'?s\b/i, "Sainsbury's"],
+  [/\basda\b/i, 'Asda'],
+  [/\bmorrisons\b/i, 'Morrisons'],
+  [/\baldi\b/i, 'Aldi'],
+  [/\blidl\b/i, 'Lidl'],
+  [/\bshell\b/i, 'Shell'],
+  [/\besso\b/i, 'Esso'],
+  [/\btexaco\b/i, 'Texaco'],
+  [/\bbp\b/, 'BP'],
+];
 
 function cleanNumbers(line: string): string {
   // Common OCR confusions inside numbers: O→0, l/I→1, S→5, B→8.
@@ -24,6 +67,10 @@ function moneyValues(line: string): number[] {
     values.push(Number(`${match[1]}.${match[2]}`));
   }
   return values;
+}
+
+function letterCount(text: string): number {
+  return (text.match(/[A-Za-z]/g) ?? []).length;
 }
 
 export function findAmount(lines: string[]): number | undefined {
@@ -52,14 +99,87 @@ export function findAmount(lines: string[]): number | undefined {
 }
 
 export function findMerchant(lines: string[]): string | undefined {
+  const text = lines.join('\n');
+  for (const [pattern, name] of KNOWN_MERCHANTS) {
+    if (pattern.test(text)) return name;
+  }
   for (const raw of lines.slice(0, 8)) {
     const line = raw.replace(/[^A-Za-z0-9&'’.\- ]+/g, ' ').replace(/\s+/g, ' ').trim();
-    const letters = (line.match(/[A-Za-z]/g) ?? []).length;
-    if (letters < 3 || letters < line.length / 2) continue;
+    const letters = letterCount(line);
+    if (letters < 4 || letters < line.length * 0.7) continue;
+    // Photo noise tends to OCR as short fragments ("Ay PT"); a real name has a proper word in it.
+    if (!line.split(' ').some((word) => letterCount(word) >= 4)) continue;
     if (NOISE_LINE.test(line)) continue;
     return line.length > 40 ? line.slice(0, 40).trim() : line;
   }
   return undefined;
+}
+
+function cleanItemName(raw: string): string {
+  let name = cleanNumbers(raw)
+    .replace(/(?:£|GBP\s?)?-?\d{1,5}[.,]\d{2}\b/g, ' ') // prices
+    .replace(/\b\d{8,}\b/g, ' ') // barcodes
+    .replace(/[^A-Za-z0-9&'’/%.,\- ]+/g, ' ')
+    .replace(/-\s+(?=[A-Za-z])/g, '-') // "MULTI- PURPOSE" (noise split a hyphenated word)
+    .replace(/\s+/g, ' ')
+    .replace(/^[\W_]+|[\W_]+$/g, '')
+    .trim();
+  // Stray single characters at the end are usually photo noise ("GRIT 20KG 3").
+  name = name.replace(/(\s+[A-Za-z0-9]){1,2}$/, '').trim();
+  return name;
+}
+
+/** Product lines between the header and the total. Handles "2x NAME / barcode £unit £total" and "NAME 12.98" layouts. */
+export function findItems(lines: string[]): ReceiptItem[] {
+  let end = lines.findIndex((l) => ITEMS_END.test(l));
+  if (end === -1) end = lines.length;
+  const items: ReceiptItem[] = [];
+
+  for (let i = 0; i < end; i++) {
+    const line = lines[i];
+    if (ITEM_NOISE.test(line)) continue;
+    const prices = moneyValues(line);
+    const qty = line.match(QTY_LINE);
+
+    if (qty) {
+      const name = cleanItemName(qty[2]);
+      if (letterCount(name) < 4) continue;
+      let price = prices.length > 0 ? prices[prices.length - 1] : undefined;
+      if (price === undefined && i + 1 < end) {
+        // "2x NAME" with the barcode and prices on the next line.
+        const next = moneyValues(lines[i + 1]);
+        if (next.length > 0) {
+          price = next[next.length - 1];
+          i++;
+        }
+      }
+      items.push({ quantity: Number(qty[1]), name, price });
+      continue;
+    }
+
+    if (prices.length > 0) {
+      // "NAME 12.98" on one line; ignore barcode/price-only lines and obvious noise.
+      const name = cleanItemName(line);
+      if (letterCount(name) < 4 || /\d{8,}/.test(line)) continue;
+      items.push({ quantity: 1, name, price: prices[prices.length - 1] });
+      continue;
+    }
+
+    if (i + 1 < end) {
+      // "NAME" or "1 NAME" (the "x" often gets lost) followed by a barcode/price line.
+      const bare = line.match(/^(\d{1,2})\s+(.+)$/);
+      const name = cleanItemName(bare ? bare[2] : line);
+      const next = lines[i + 1];
+      const nextPrices = moneyValues(next);
+      const nextIsPriceLine = nextPrices.length > 0 && (/\d{8,}/.test(next) || letterCount(next) <= 2) && !ITEM_NOISE.test(next);
+      const looksLikeName = letterCount(name) >= 4 && letterCount(name) >= name.replace(/\s/g, '').length * 0.5;
+      if (looksLikeName && nextIsPriceLine) {
+        items.push({ quantity: bare ? Number(bare[1]) : 1, name, price: nextPrices[nextPrices.length - 1] });
+        i++;
+      }
+    }
+  }
+  return items;
 }
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
@@ -93,14 +213,35 @@ export function findDate(text: string): string | undefined {
   return undefined;
 }
 
+function formatItem(item: ReceiptItem): string {
+  const qty = item.quantity > 1 ? `${item.quantity}x ` : '';
+  const price = item.price !== undefined ? ` £${item.price.toFixed(2)}` : '';
+  return `${qty}${item.name}${price}`;
+}
+
+/** Multi-line description for the material entry: shop on the first line, then one line per item. */
+export function describeReceipt(parsed: ParsedReceipt): string | undefined {
+  const lines: string[] = [];
+  if (parsed.merchant) lines.push(parsed.merchant);
+  for (const item of parsed.items) lines.push(formatItem(item));
+  return lines.length > 0 ? lines.join('\n') : undefined;
+}
+
 export function parseReceipt(text: string): ParsedReceipt {
   const lines = text
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
+  const amount = findAmount(lines);
+  const items = findItems(lines);
+  const itemsTotal = items.reduce((sum, item) => sum + (item.price ?? 0), 0);
+  // Items should add up to the total, or to a subtotal on trade receipts that add VAT afterwards.
+  const targets = [amount, ...lines.filter((l) => /\bsub\s*-?\s*total\b/i.test(l)).flatMap(moneyValues)];
   return {
-    amount: findAmount(lines),
+    amount,
     merchant: findMerchant(lines),
     date: findDate(text),
+    items,
+    itemsMatchTotal: items.length > 0 && targets.some((t) => t !== undefined && Math.abs(itemsTotal - t) < 0.011),
   };
 }

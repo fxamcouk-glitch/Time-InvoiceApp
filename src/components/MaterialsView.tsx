@@ -4,7 +4,7 @@ import { newId } from '../lib/id';
 import { recognizeReceipt } from '../lib/ocr';
 import type { OcrProgress } from '../lib/ocr';
 import { compressPhoto, deletePhoto, savePhoto } from '../lib/photos';
-import { parseReceipt } from '../lib/receipt';
+import { describeReceipt, parseReceipt } from '../lib/receipt';
 import type { Client, MaterialEntry } from '../types';
 import { CameraIcon, ChevronRightIcon } from './icons';
 import { ReceiptThumb, ReceiptViewer } from './ReceiptPhoto';
@@ -35,7 +35,13 @@ interface ScanReview {
   amount: string;
   description: string;
   date: string;
-  found: { amount: boolean; merchant: boolean; date: boolean };
+  found: { amount: boolean; description: boolean; date: boolean };
+  /** Shown when the items read don't add up to the total, so some are probably missing or misread. */
+  warning?: string;
+}
+
+function textareaRows(text: string): number {
+  return Math.min(8, Math.max(2, text.split('\n').length + (text.includes('\n') ? 1 : 0)));
 }
 
 function ReadBadge({ found }: { found: boolean }) {
@@ -107,12 +113,19 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
     try {
       const text = await recognizeReceipt(file, (progress) => setScan({ status: 'working', progress }));
       const parsed = parseReceipt(text);
+      const description = describeReceipt(parsed);
       // Hand the results to the user to check against the photo; nothing goes into the entry until they approve.
       setReview({
         amount: parsed.amount !== undefined ? parsed.amount.toFixed(2) : form.amount,
-        description: parsed.merchant && !form.description.trim() ? parsed.merchant : form.description,
+        description: description && !form.description.trim() ? description : form.description,
         date: parsed.date ?? form.date,
-        found: { amount: parsed.amount !== undefined, merchant: !!parsed.merchant, date: !!parsed.date },
+        found: { amount: parsed.amount !== undefined, description: !!description, date: !!parsed.date },
+        warning:
+          parsed.items.length > 0 && !parsed.itemsMatchTotal
+            ? "The items read don't add up to the total, so some may be missing or misread."
+            : parsed.items.length === 0
+              ? "Couldn't pick out the individual items — add them to the description if you want them on the invoice."
+              : undefined,
       });
       setScan({ status: 'idle' });
     } catch (err) {
@@ -330,12 +343,13 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
               <Field
                 label={
                   <span className="flex flex-wrap items-center gap-2">
-                    Description <ReadBadge found={review.found.merchant} />
+                    Description <ReadBadge found={review.found.description} />
                   </span>
                 }
               >
+                {review.warning && <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700">{review.warning}</p>}
                 <Textarea
-                  rows={2}
+                  rows={textareaRows(review.description)}
                   value={review.description}
                   onChange={(e) => setReview({ ...review, description: e.target.value })}
                   placeholder="Petrol, timber, screws, etc."
@@ -424,7 +438,7 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
               </Field>
               <Field label="Description">
                 <Textarea
-                  rows={2}
+                  rows={textareaRows(form.description)}
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   placeholder="Petrol, timber, screws, etc."
