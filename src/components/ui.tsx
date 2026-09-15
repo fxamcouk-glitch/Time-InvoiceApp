@@ -17,7 +17,7 @@ export function Button({
   return <button className={`${base} ${variants[variant]} ${className}`} {...props} />;
 }
 
-export function Field({ label, children, htmlFor }: { label: string; children: React.ReactNode; htmlFor?: string }) {
+export function Field({ label, children, htmlFor }: { label: React.ReactNode; children: React.ReactNode; htmlFor?: string }) {
   return (
     <label className="flex flex-col gap-1 text-sm" htmlFor={htmlFor}>
       <span className="font-medium text-slate-700">{label}</span>

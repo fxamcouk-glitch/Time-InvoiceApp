@@ -30,6 +30,18 @@ type ScanState =
 /** The receipt photo attached to the entry being edited: a stored photo (material id), a new one (Blob), or none. */
 type PhotoSource = string | Blob | null;
 
+/** What the scan read, waiting for the user to check and approve it before it goes into the entry. */
+interface ScanReview {
+  amount: string;
+  description: string;
+  date: string;
+  found: { amount: boolean; merchant: boolean; date: boolean };
+}
+
+function ReadBadge({ found }: { found: boolean }) {
+  return found ? <LabelBadge tone="green">Read from receipt</LabelBadge> : <LabelBadge tone="amber">Not found — enter by hand</LabelBadge>;
+}
+
 function scanLabel(progress: OcrProgress): string {
   if (progress.stage === 'loading') return 'Preparing scanner…';
   return `Reading receipt… ${Math.round(progress.progress * 100)}%`;
@@ -42,6 +54,7 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
   const [filterClientId, setFilterClientId] = useState<string>('all');
   const [scan, setScan] = useState<ScanState>({ status: 'idle' });
   const [photo, setPhoto] = useState<PhotoSource>(null);
+  const [review, setReview] = useState<ScanReview | null>(null);
   const [viewingPhoto, setViewingPhoto] = useState<PhotoSource>(null);
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -53,6 +66,7 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
     setEditingId(null);
     setScan({ status: 'idle' });
     setPhoto(null);
+    setReview(null);
     setSheetOpen(true);
   }
 
@@ -62,6 +76,7 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
     setEditingId(null);
     setScan({ status: 'idle' });
     setPhoto(null);
+    setReview(null);
   }
 
   function edit(material: MaterialEntry) {
@@ -74,6 +89,7 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
     });
     setScan({ status: 'idle' });
     setPhoto(material.hasPhoto ? material.id : null);
+    setReview(null);
     setSheetOpen(true);
   }
 
@@ -91,22 +107,14 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
     try {
       const text = await recognizeReceipt(file, (progress) => setScan({ status: 'working', progress }));
       const parsed = parseReceipt(text);
-      const fillDescription = !!parsed.merchant && !form.description.trim();
-      const found: string[] = [];
-      if (parsed.amount !== undefined) found.push(formatCurrency(parsed.amount));
-      if (fillDescription) found.push(parsed.merchant!);
-      if (parsed.date) found.push(formatDayHeading(parsed.date));
-      setForm((current) => ({
-        ...current,
-        amount: parsed.amount !== undefined ? parsed.amount.toFixed(2) : current.amount,
-        description: fillDescription ? parsed.merchant! : current.description,
-        date: parsed.date ?? current.date,
-      }));
-      setScan(
-        found.length > 0
-          ? { status: 'done', message: `Found ${found.join(' · ')}. Check the details before saving.` }
-          : { status: 'error', message: "Couldn't read a total from that photo, but it's attached. Enter the cost by hand." },
-      );
+      // Hand the results to the user to check against the photo; nothing goes into the entry until they approve.
+      setReview({
+        amount: parsed.amount !== undefined ? parsed.amount.toFixed(2) : form.amount,
+        description: parsed.merchant && !form.description.trim() ? parsed.merchant : form.description,
+        date: parsed.date ?? form.date,
+        found: { amount: parsed.amount !== undefined, merchant: !!parsed.merchant, date: !!parsed.date },
+      });
+      setScan({ status: 'idle' });
     } catch (err) {
       console.error(err);
       setScan({
@@ -116,6 +124,23 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
           : 'Scanning needs an internet connection the first time it is used. The photo is still attached.',
       });
     }
+  }
+
+  function approveReview() {
+    if (!review) return;
+    setForm((current) => ({
+      ...current,
+      amount: review.amount,
+      description: review.description,
+      date: review.date || current.date,
+    }));
+    setReview(null);
+    setScan({ status: 'done', message: `Receipt details added. Check everything, then tap ${editingId ? 'Save changes' : 'Add material'}.` });
+  }
+
+  function discardReview() {
+    setReview(null);
+    setScan({ status: 'idle' });
   }
 
   async function submit(e: React.FormEvent) {
@@ -276,99 +301,156 @@ export function MaterialsView({ clients, materials, onChange }: Props) {
       </Card>
 
       {sheetOpen && (
-        <Sheet title={editingId ? 'Edit material' : 'Log material'} onClose={closeSheet}>
-          <form onSubmit={submit} className="flex flex-col gap-3">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleReceiptPhoto}
-              className="hidden"
-              aria-label="Receipt photo"
-            />
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={scan.status === 'working'}
-              className="w-full"
-            >
-              <CameraIcon className="h-5 w-5" />
-              {scan.status === 'working' ? scanLabel(scan.progress) : photo ? 'Scan a different receipt' : 'Scan receipt'}
-            </Button>
-            {scan.status === 'working' && (
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200" role="progressbar">
-                <div
-                  className="h-full rounded-full bg-indigo-500 transition-[width]"
-                  style={{ width: `${Math.round((scan.progress.stage === 'recognizing' ? scan.progress.progress : 0.05) * 100)}%` }}
+        // Keyed so the sheet remounts (and scrolls back to the top) when switching between the review and the form.
+        <Sheet key={review ? 'review' : 'form'} title={review ? 'Check the scan' : editingId ? 'Edit material' : 'Log material'} onClose={closeSheet}>
+          {review ? (
+            <div className="flex flex-col gap-3" data-testid="scan-review">
+              <p className="text-sm text-slate-500">
+                Compare what was read with the receipt and correct anything that is wrong. Nothing is saved yet.
+              </p>
+              <ReceiptThumb source={photo} fit="contain" className="h-48 w-full bg-slate-100" onClick={() => setViewingPhoto(photo)} />
+              <p className="-mt-2 text-center text-xs text-slate-400">Tap the photo to enlarge</p>
+              <Field
+                label={
+                  <span className="flex flex-wrap items-center gap-2">
+                    Cost (£) <ReadBadge found={review.found.amount} />
+                  </span>
+                }
+              >
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  value={review.amount}
+                  onChange={(e) => setReview({ ...review, amount: e.target.value })}
+                  autoFocus={!review.found.amount}
                 />
-              </div>
-            )}
-            {scan.status === 'done' && (
-              <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700" role="status">
-                {scan.message}
-              </p>
-            )}
-            {scan.status === 'error' && (
-              <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700" role="status">
-                {scan.message}
-              </p>
-            )}
-            {photo && (
-              <div className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2" data-testid="receipt-photo">
-                <ReceiptThumb source={photo} className="h-14 w-14" onClick={() => setViewingPhoto(photo)} />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-slate-700">Receipt photo attached</p>
-                  <p className="text-xs text-slate-500">Kept on this phone with the entry.</p>
-                </div>
-                <button type="button" onClick={() => setViewingPhoto(photo)} className="text-sm font-medium text-indigo-600">
-                  View
-                </button>
-                <button type="button" onClick={() => setPhoto(null)} className="text-sm font-medium text-red-600">
-                  Remove
-                </button>
-              </div>
-            )}
-            <Field label="Client">
-              <Select value={form.clientId} onChange={(e) => setForm({ ...form, clientId: e.target.value })} required>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Date">
-              <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required />
-            </Field>
-            <Field label="Description">
-              <Textarea
-                rows={2}
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                placeholder="Petrol, timber, screws, etc."
-              />
-            </Field>
-            <Field label="Cost (£)">
-              <Input
-                type="number"
-                inputMode="decimal"
-                min="0"
-                step="0.01"
-                value={form.amount}
-                onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                required
-              />
-            </Field>
-            <Button type="submit" className="mt-1 w-full" disabled={saving}>
-              {saving ? 'Saving…' : editingId ? 'Save changes' : 'Add material'}
-            </Button>
-            {editingId && (
-              <Button type="button" variant="danger" onClick={() => remove(editingId)} className="w-full">
-                Delete material
+              </Field>
+              <Field
+                label={
+                  <span className="flex flex-wrap items-center gap-2">
+                    Description <ReadBadge found={review.found.merchant} />
+                  </span>
+                }
+              >
+                <Textarea
+                  rows={2}
+                  value={review.description}
+                  onChange={(e) => setReview({ ...review, description: e.target.value })}
+                  placeholder="Petrol, timber, screws, etc."
+                />
+              </Field>
+              <Field
+                label={
+                  <span className="flex flex-wrap items-center gap-2">
+                    Date <ReadBadge found={review.found.date} />
+                  </span>
+                }
+              >
+                <Input type="date" value={review.date} onChange={(e) => setReview({ ...review, date: e.target.value })} />
+              </Field>
+              <Button type="button" onClick={approveReview} className="mt-1 w-full" disabled={!(Number(review.amount) > 0)}>
+                Use these details
               </Button>
-            )}
-          </form>
+              <Button type="button" variant="secondary" onClick={discardReview} className="w-full">
+                Discard scan
+              </Button>
+            </div>
+          ) : (
+              <form onSubmit={submit} className="flex flex-col gap-3">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleReceiptPhoto}
+                className="hidden"
+                aria-label="Receipt photo"
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={scan.status === 'working'}
+                className="w-full"
+              >
+                <CameraIcon className="h-5 w-5" />
+                {scan.status === 'working' ? scanLabel(scan.progress) : photo ? 'Scan a different receipt' : 'Scan receipt'}
+              </Button>
+              {scan.status === 'working' && (
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200" role="progressbar">
+                  <div
+                    className="h-full rounded-full bg-indigo-500 transition-[width]"
+                    style={{ width: `${Math.round((scan.progress.stage === 'recognizing' ? scan.progress.progress : 0.05) * 100)}%` }}
+                  />
+                </div>
+              )}
+              {scan.status === 'done' && (
+                <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700" role="status">
+                  {scan.message}
+                </p>
+              )}
+              {scan.status === 'error' && (
+                <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700" role="status">
+                  {scan.message}
+                </p>
+              )}
+              {photo && (
+                <div className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2" data-testid="receipt-photo">
+                  <ReceiptThumb source={photo} className="h-14 w-14" onClick={() => setViewingPhoto(photo)} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-slate-700">Receipt photo attached</p>
+                    <p className="text-xs text-slate-500">Kept on this phone with the entry.</p>
+                  </div>
+                  <button type="button" onClick={() => setViewingPhoto(photo)} className="text-sm font-medium text-indigo-600">
+                    View
+                  </button>
+                  <button type="button" onClick={() => setPhoto(null)} className="text-sm font-medium text-red-600">
+                    Remove
+                  </button>
+                </div>
+              )}
+              <Field label="Client">
+                <Select value={form.clientId} onChange={(e) => setForm({ ...form, clientId: e.target.value })} required>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Date">
+                <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required />
+              </Field>
+              <Field label="Description">
+                <Textarea
+                  rows={2}
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  placeholder="Petrol, timber, screws, etc."
+                />
+              </Field>
+              <Field label="Cost (£)">
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  value={form.amount}
+                  onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                  required
+                />
+              </Field>
+              <Button type="submit" className="mt-1 w-full" disabled={saving}>
+                {saving ? 'Saving…' : editingId ? 'Save changes' : 'Add material'}
+              </Button>
+              {editingId && (
+                <Button type="button" variant="danger" onClick={() => remove(editingId)} className="w-full">
+                  Delete material
+                </Button>
+              )}
+            </form>
+          )}
         </Sheet>
       )}
 
