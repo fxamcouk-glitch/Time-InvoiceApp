@@ -24,11 +24,11 @@ const NOISE_LINE = /\b(receipt|invoice|vat\s*(no|reg|number)|tel|phone|www\.|htt
 const ITEMS_END = /\b(sub\s*-?\s*total|total|amount\s*due|to\s*pay|balance\s*due|\d+\s*items?\b|items?\s*\(s\)|items?\s*:)/i;
 /** Lines inside the purchases region that are never items. */
 const ITEM_NOISE = /\b(tel|phone|email|e-mail|www\.|http|@|vat|returns?|policy|overleaf|thank|welcome|cashier|served|till|store|branch|opening|hours|receipt|invoice|date|time|order|ref|reference|auth|card|change|cash|tendered|qty|price|description)\b|\d{2}[/.-]\d{2}[/.-]\d{2,4}|\d{1,2}:\d{2}/i;
-/** "2x NAME"; OCR often turns the x into c, « or *, and a 1 into I or l. */
-const QTY_LINE = /(?:^|\s)(\d{1,3}|[Il])\s?[xX×cC«»*]\s+(.+)$/;
+/** "2x NAME"; OCR often turns the x into c, « or *, and a 1 into I, l, i or |. */
+const QTY_LINE = /(?:^|\s)(\d{1,3}|[Ili|])\s?[xX×cC«»*]\s+(.+)$/;
 
 function parseQuantity(raw: string): number {
-  return /^[Il]$/.test(raw) ? 1 : Number(raw);
+  return /^[Ili|]$/.test(raw) ? 1 : Number(raw);
 }
 
 /** Shops a tradesperson is likely to use; matched anywhere in the text (with common OCR slips for B&Q). */
