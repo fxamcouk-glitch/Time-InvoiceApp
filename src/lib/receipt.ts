@@ -26,9 +26,25 @@ const ITEMS_END = /\b(sub\s*-?\s*total|total|amount\s*due|to\s*pay|balance\s*due
 const ITEM_NOISE = /\b(tel|phone|email|e-mail|www\.|http|@|vat|returns?|policy|overleaf|thank|welcome|cashier|served|till|store|branch|opening|hours|receipt|invoice|date|time|order|ref|reference|auth|card|change|cash|tendered|qty|price|description)\b|\d{2}[/.-]\d{2}[/.-]\d{2,4}|\d{1,2}:\d{2}/i;
 /** "2x NAME"; OCR often turns the x into c, « or *, and a 1 into I, l, i or |. */
 const QTY_LINE = /(?:^|\s)(\d{1,3}|[Ili|])\s?[xX×cC«»*]\s+(.+)$/;
+/** "E x NAME" or just "x NAME": the quantity digit was garbled or lost, but the "x" survived. */
+const QTY_GARBLED_LINE = /(?:^|\s)(?:[A-Z]\s?)?[xX×]\s+(.+)$/;
 
 function parseQuantity(raw: string): number {
   return /^[Ili|]$/.test(raw) ? 1 : Number(raw);
+}
+
+/**
+ * On "unit price … line total" price lines (e.g. "£13.00 £26.00") the quantity is total ÷ unit.
+ * More trustworthy than the "2x" token, which is a single easily-misread character.
+ */
+function quantityFromPrices(prices: number[]): number | undefined {
+  if (prices.length < 2) return undefined;
+  const unit = prices[prices.length - 2];
+  const total = prices[prices.length - 1];
+  if (unit <= 0 || total < unit) return undefined;
+  const qty = total / unit;
+  const rounded = Math.round(qty);
+  return Math.abs(qty - rounded) < 0.01 && rounded >= 1 && rounded <= 99 ? rounded : undefined;
 }
 
 /** Shops a tradesperson is likely to use; matched anywhere in the text (with common OCR slips for B&Q). */
@@ -130,6 +146,7 @@ export function findMerchant(lines: string[]): string | undefined {
 
 function cleanItemName(raw: string): string {
   let name = cleanNumbers(raw)
+    .replace(/^\s*[xX×]\s+/, '') // a stray "x" left over from a lost quantity
     .replace(/(?:£|GBP\s?)?-?\d{1,5}[.,]\d{2}\b/g, ' ') // prices
     .replace(/\b\d{6,}\b/g, ' ') // barcodes (often with digits lost)
     .replace(/[^A-Za-z0-9&'’/%.,\- ]+/g, ' ')
@@ -154,20 +171,23 @@ export function findItems(lines: string[]): ReceiptItem[] {
     if (ITEM_NOISE.test(line)) continue;
     const prices = moneyValues(line);
     const qty = line.match(QTY_LINE);
+    const garbled = qty ? null : line.match(QTY_GARBLED_LINE);
 
-    if (qty) {
-      const name = cleanItemName(qty[2]);
+    if (qty || garbled) {
+      const name = cleanItemName(qty ? qty[2] : garbled![1]);
       if (!looksLikeName(name)) continue;
-      let price = prices.length > 0 ? prices[prices.length - 1] : undefined;
-      if (price === undefined && i + 1 < end) {
+      let priceLine = prices;
+      if (priceLine.length === 0 && i + 1 < end) {
         // "2x NAME" with the barcode and prices on the next line.
         const next = moneyValues(lines[i + 1]);
         if (next.length > 0) {
-          price = next[next.length - 1];
+          priceLine = next;
           i++;
         }
       }
-      items.push({ quantity: parseQuantity(qty[1]), name, price });
+      const price = priceLine.length > 0 ? priceLine[priceLine.length - 1] : undefined;
+      const quantity = quantityFromPrices(priceLine) ?? (qty ? parseQuantity(qty[1]) : 1);
+      items.push({ quantity, name, price });
       continue;
     }
 
@@ -188,7 +208,8 @@ export function findItems(lines: string[]): ReceiptItem[] {
       const nextPrices = moneyValues(next);
       const nextIsPriceLine = nextPrices.length > 0 && (/\d{6,}/.test(next) || letterCount(next) <= 2) && !ITEM_NOISE.test(next);
       if (looksLikeName(name) && nextIsPriceLine) {
-        items.push({ quantity: bare ? Number(bare[1]) : 1, name, price: nextPrices[nextPrices.length - 1] });
+        const quantity = quantityFromPrices(nextPrices) ?? (bare ? Number(bare[1]) : 1);
+        items.push({ quantity, name, price: nextPrices[nextPrices.length - 1] });
         i++;
       }
     }
