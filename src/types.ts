@@ -6,6 +6,8 @@ export interface Client {
   hourlyRate: number;
   lat?: number;
   lng?: number;
+  /** Hex colour used on the calendar; assigned to be distinct from other clients. */
+  color?: string;
 }
 
 export interface EntryLocation {

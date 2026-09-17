@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { colorForClient } from '../lib/colors';
+import { clientColor } from '../lib/colors';
 import { formatCurrency, formatDate, formatMonthLabel, today } from '../lib/format';
 import type { Client, MaterialEntry, TimeEntry } from '../types';
 import { BoxIcon, ChevronRightIcon } from './icons';
@@ -56,6 +56,7 @@ export function CalendarView({ entries, materials, clients, onEditEntry, onEditM
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const clientMap = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients]);
+  const colorFor = (clientId: string) => clientColor(clientMap.get(clientId), clientId);
 
   const entriesByDate = useMemo(() => groupByDate(entries), [entries]);
   const materialsByDate = useMemo(() => groupByDate(materials), [materials]);
@@ -126,7 +127,7 @@ export function CalendarView({ entries, materials, clients, onEditEntry, onEditM
               {dayClientIds.length > 0 && (
                 <div className="mt-auto flex h-1.5 w-full overflow-hidden rounded-full">
                   {dayClientIds.map((id) => (
-                    <span key={id} style={{ background: colorForClient(id), flex: 1 }} />
+                    <span key={id} style={{ background: colorFor(id), flex: 1 }} />
                   ))}
                 </div>
               )}
@@ -139,7 +140,7 @@ export function CalendarView({ entries, materials, clients, onEditEntry, onEditM
         <div className="flex flex-wrap gap-x-3 gap-y-1 border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
           {clientsInMonth.map((c) => (
             <span key={c.id} className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full" style={{ background: colorForClient(c.id) }} />
+              <span className="h-2 w-2 rounded-full" style={{ background: colorFor(c.id) }} />
               {c.name}
             </span>
           ))}
@@ -168,7 +169,7 @@ export function CalendarView({ entries, materials, clients, onEditEntry, onEditM
               const editable = !e.invoiceId && !!onEditEntry;
               const content = (
                 <>
-                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: colorForClient(e.clientId) }} />
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: colorFor(e.clientId) }} />
                   <span className="min-w-0 flex-1 truncate text-slate-700">
                     {clientMap.get(e.clientId)?.name ?? 'Unknown client'}
                     {e.description && ` · ${e.description}`}
@@ -205,7 +206,7 @@ export function CalendarView({ entries, materials, clients, onEditEntry, onEditM
                   const editable = !m.invoiceId && !!onEditMaterial;
                   const content = (
                     <>
-                      <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: colorForClient(m.clientId) }} />
+                      <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: colorFor(m.clientId) }} />
                       <span className="min-w-0 flex-1 truncate text-slate-700">
                         {clientMap.get(m.clientId)?.name ?? 'Unknown client'}
                         {m.description && ` · ${m.description.split('\n').join(', ')}`}

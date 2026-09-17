@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { clientColor, PALETTE, pickUnusedColor } from '../lib/colors';
 import { formatCurrency } from '../lib/format';
 import { getCurrentPosition, reverseGeocode } from '../lib/geo';
 import { newId } from '../lib/id';
@@ -12,11 +13,12 @@ interface Props {
   onChange: (clients: Client[]) => void;
 }
 
-const emptyForm: { name: string; email: string; address: string; hourlyRate: string; lat?: number; lng?: number } = {
+const emptyForm: { name: string; email: string; address: string; hourlyRate: string; color: string; lat?: number; lng?: number } = {
   name: '',
   email: '',
   address: '',
   hourlyRate: '',
+  color: PALETTE[0],
 };
 
 export function ClientsView({ clients, onChange }: Props) {
@@ -27,7 +29,7 @@ export function ClientsView({ clients, onChange }: Props) {
   const [locationError, setLocationError] = useState<string | null>(null);
 
   function openNew() {
-    setForm(emptyForm);
+    setForm({ ...emptyForm, color: pickUnusedColor(clients) });
     setEditingId(null);
     setLocationError(null);
     setSheetOpen(true);
@@ -74,6 +76,7 @@ export function ClientsView({ clients, onChange }: Props) {
                 email: form.email.trim(),
                 address: form.address.trim(),
                 hourlyRate: rate,
+                color: form.color,
                 lat: form.lat,
                 lng: form.lng,
               }
@@ -87,6 +90,7 @@ export function ClientsView({ clients, onChange }: Props) {
         email: form.email.trim(),
         address: form.address.trim(),
         hourlyRate: rate,
+        color: form.color,
         lat: form.lat,
         lng: form.lng,
       };
@@ -102,6 +106,7 @@ export function ClientsView({ clients, onChange }: Props) {
       email: client.email,
       address: client.address,
       hourlyRate: String(client.hourlyRate),
+      color: clientColor(client),
       lat: client.lat,
       lng: client.lng,
     });
@@ -138,6 +143,7 @@ export function ClientsView({ clients, onChange }: Props) {
                   onClick={() => edit(c)}
                   className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 active:bg-slate-100 sm:px-5"
                 >
+                  <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: clientColor(c) }} aria-hidden="true" />
                   <div className="min-w-0 flex-1">
                     <p className="flex items-center gap-1.5 truncate text-base font-medium text-slate-800 sm:text-sm">
                       <span className="truncate">{c.name}</span>
@@ -202,6 +208,49 @@ export function ClientsView({ clients, onChange }: Props) {
                 onChange={(e) => setForm({ ...form, hourlyRate: e.target.value })}
                 placeholder="25"
               />
+            </Field>
+            <Field label="Calendar colour">
+              <div className="flex flex-wrap items-center gap-2 pt-1" role="radiogroup" aria-label="Calendar colour">
+                {PALETTE.map((color) => {
+                  const selected = form.color === color;
+                  return (
+                    <button
+                      key={color}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      aria-label={`Colour ${color}`}
+                      onClick={() => setForm({ ...form, color })}
+                      className={`flex h-9 w-9 items-center justify-center rounded-full transition-transform active:scale-95 ${
+                        selected ? 'ring-2 ring-slate-800 ring-offset-2' : ''
+                      }`}
+                      style={{ background: color }}
+                    >
+                      {selected && (
+                        <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                          <path d="m5 12 5 5L20 7" />
+                        </svg>
+                      )}
+                    </button>
+                  );
+                })}
+                <label
+                  className={`relative flex h-9 w-9 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-slate-300 text-[10px] font-medium text-slate-600 ${
+                    !PALETTE.includes(form.color) ? 'ring-2 ring-slate-800 ring-offset-2' : ''
+                  }`}
+                  style={!PALETTE.includes(form.color) ? { background: form.color, color: 'white' } : undefined}
+                  title="Custom colour"
+                >
+                  Any
+                  <input
+                    type="color"
+                    value={form.color}
+                    onChange={(e) => setForm({ ...form, color: e.target.value })}
+                    className="absolute inset-0 cursor-pointer opacity-0"
+                    aria-label="Custom colour"
+                  />
+                </label>
+              </div>
             </Field>
             <Button type="submit" className="mt-1 w-full">
               {editingId ? 'Save changes' : 'Add client'}

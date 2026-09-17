@@ -1,6 +1,7 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { BusinessSettings } from './components/BusinessSettings';
 import { CalendarPage } from './components/CalendarPage';
+import { assignMissingColors } from './lib/colors';
 import { ClientsView } from './components/ClientsView';
 import { BoxIcon, CalendarIcon, ClockIcon, GearIcon, ReceiptIcon, RefreshIcon, UsersIcon } from './components/icons';
 import { InvoicesView } from './components/InvoicesView';
@@ -33,6 +34,13 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pendingEditEntryId, setPendingEditEntryId] = useState<string | null>(null);
   const [pendingEditMaterialId, setPendingEditMaterialId] = useState<string | null>(null);
+
+  // Clients saved before colours existed get distinct ones on first load.
+  useEffect(() => {
+    const fixed = assignMissingColors(clients);
+    if (fixed) setClients(fixed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function editEntryFromCalendar(entry: TimeEntry) {
     setPendingEditEntryId(entry.id);
