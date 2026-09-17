@@ -31,6 +31,15 @@ export function BusinessSettings({ business, onChange, onClose }: Props) {
         <Field label="Address">
           <Textarea rows={3} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
         </Field>
+        <Field label="Payment details">
+          <Textarea
+            rows={3}
+            value={form.paymentDetails ?? ''}
+            onChange={(e) => setForm({ ...form, paymentDetails: e.target.value })}
+            placeholder={'Bank transfer to J Smith\nSort code 04-00-04\nAccount 12345678'}
+          />
+          <span className="text-xs font-normal text-slate-500">Printed on unpaid invoices under "Payment", with the invoice number as the reference.</span>
+        </Field>
         <Button type="submit" className="mt-1 w-full">
           Save
         </Button>

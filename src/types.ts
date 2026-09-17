@@ -59,4 +59,6 @@ export interface BusinessInfo {
   name: string;
   email: string;
   address: string;
+  /** How clients should pay (sort code, account number, etc.); printed on invoices. */
+  paymentDetails?: string;
 }
