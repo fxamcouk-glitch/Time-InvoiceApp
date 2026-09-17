@@ -4,7 +4,7 @@ import { newId } from '../lib/id';
 import { generateInvoicePdf } from '../lib/pdf';
 import { canShareFile, openMailto, pdfToFile, shareFile } from '../lib/share';
 import type { BusinessInfo, Client, Invoice, InvoiceStatus, MaterialEntry, TimeEntry } from '../types';
-import { MailIcon } from './icons';
+import { CheckIcon, MailIcon } from './icons';
 import { Button, Card, EmptyState, Field, Input, LabelBadge, Select, Textarea } from './ui';
 
 interface Props {
@@ -23,6 +23,10 @@ const statusTone: Record<InvoiceStatus, 'gray' | 'blue' | 'green'> = {
   sent: 'blue',
   paid: 'green',
 };
+
+function isOverdue(invoice: Invoice): boolean {
+  return invoice.status !== 'paid' && invoice.dueDate < today();
+}
 
 function nextInvoiceNumber(invoices: Invoice[]): string {
   const year = new Date().getFullYear();
@@ -112,8 +116,10 @@ export function InvoicesView({
     if (viewingId === id) setViewingId(null);
   }
 
-  function setStatus(id: string, status: InvoiceStatus) {
-    onInvoicesChange(invoices.map((i) => (i.id === id ? { ...i, status } : i)));
+  function setStatus(id: string, status: InvoiceStatus, paidDate?: string) {
+    onInvoicesChange(
+      invoices.map((i) => (i.id === id ? { ...i, status, paidDate: status === 'paid' ? (paidDate ?? i.paidDate ?? today()) : undefined } : i)),
+    );
   }
 
   function buildInvoicePdf(invoice: Invoice) {
@@ -142,12 +148,27 @@ export function InvoicesView({
 
     if (canShareFile(file)) {
       const ok = await shareFile(file, subject, body);
-      if (ok) return;
+      if (ok) {
+        if (invoice.status === 'draft') setStatus(invoice.id, 'sent');
+        return;
+      }
     }
     // Fallback for browsers without file-sharing support: download the PDF and open a
     // pre-filled email draft so it just needs the file attached.
     doc.save(filename);
     openMailto(client.email, subject, body);
+    if (invoice.status === 'draft') setStatus(invoice.id, 'sent');
+  }
+
+  const outstanding = invoices.filter((i) => i.status !== 'paid');
+  const outstandingTotal = outstanding.reduce((sum, inv) => sum + invoiceTotal(inv), 0);
+  const overdueCount = outstanding.filter(isOverdue).length;
+
+  function invoiceTotal(inv: Invoice): number {
+    const invoiceEntries = entries.filter((e) => inv.entryIds.includes(e.id));
+    const invoiceMaterials = materials.filter((m) => (inv.materialIds ?? []).includes(m.id));
+    const subtotal = invoiceEntries.reduce((sum, e) => sum + e.hours * e.rate, 0) + invoiceMaterials.reduce((sum, m) => sum + m.amount, 0);
+    return subtotal * (1 + inv.taxRate / 100);
   }
 
   const viewingInvoice = invoices.find((i) => i.id === viewingId) ?? null;
@@ -266,14 +287,26 @@ export function InvoicesView({
           {invoices.length === 0 ? (
             <EmptyState title="No invoices yet" description="Select unbilled hours or materials on the left to create your first invoice." />
           ) : (
+            <>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-slate-100 px-5 py-3 text-sm text-slate-500" data-testid="invoice-summary">
+              {outstanding.length === 0 ? (
+                <span className="flex items-center gap-1.5 text-emerald-700">
+                  <CheckIcon className="h-4 w-4" /> Everything's paid
+                </span>
+              ) : (
+                <>
+                  <span>
+                    Outstanding <span className="font-semibold text-slate-800">{formatCurrency(outstandingTotal)}</span> across {outstanding.length}{' '}
+                    {outstanding.length === 1 ? 'invoice' : 'invoices'}
+                  </span>
+                  {overdueCount > 0 && <LabelBadge tone="amber">{overdueCount} overdue</LabelBadge>}
+                </>
+              )}
+            </div>
             <ul className="divide-y divide-slate-100">
               {invoices.map((inv) => {
-                const invoiceEntries = entries.filter((e) => inv.entryIds.includes(e.id));
-                const invoiceMaterials = materials.filter((m) => (inv.materialIds ?? []).includes(m.id));
-                const subtotal =
-                  invoiceEntries.reduce((sum, e) => sum + e.hours * e.rate, 0) +
-                  invoiceMaterials.reduce((sum, m) => sum + m.amount, 0);
-                const total = subtotal * (1 + inv.taxRate / 100);
+                const total = invoiceTotal(inv);
+                const overdue = isOverdue(inv);
                 return (
                   <li
                     key={inv.id}
@@ -283,10 +316,11 @@ export function InvoicesView({
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="text-base font-medium text-slate-800 sm:text-sm">{inv.number}</p>
-                        <LabelBadge tone={statusTone[inv.status]}>{inv.status}</LabelBadge>
+                        <LabelBadge tone={overdue ? 'amber' : statusTone[inv.status]}>{overdue ? 'overdue' : inv.status}</LabelBadge>
                       </div>
-                      <p className="truncate text-xs text-slate-400">
-                        {clientMap.get(inv.clientId)?.name ?? 'Unknown client'} · Due {formatDate(inv.dueDate)}
+                      <p className={`truncate text-xs ${overdue ? 'text-amber-700' : 'text-slate-400'}`}>
+                        {clientMap.get(inv.clientId)?.name ?? 'Unknown client'} ·{' '}
+                        {inv.status === 'paid' && inv.paidDate ? `Paid ${formatDate(inv.paidDate)}` : `Due ${formatDate(inv.dueDate)}`}
                       </p>
                     </div>
                     <span className="shrink-0 text-sm font-medium text-slate-700">{formatCurrency(total)}</span>
@@ -294,6 +328,7 @@ export function InvoicesView({
                 );
               })}
             </ul>
+            </>
           )}
         </Card>
 
@@ -303,7 +338,7 @@ export function InvoicesView({
             client={clientMap.get(viewingInvoice.clientId) ?? null}
             entries={entries.filter((e) => viewingInvoice.entryIds.includes(e.id))}
             materials={materials.filter((m) => (viewingInvoice.materialIds ?? []).includes(m.id))}
-            onStatusChange={(status) => setStatus(viewingInvoice.id, status)}
+            onStatusChange={(status, paidDate) => setStatus(viewingInvoice.id, status, paidDate)}
             onDelete={() => deleteInvoice(viewingInvoice.id)}
             onDownload={() => download(viewingInvoice)}
             onEmail={() => emailInvoice(viewingInvoice)}
@@ -328,12 +363,15 @@ function InvoiceDetail({
   client: Client | null;
   entries: TimeEntry[];
   materials: MaterialEntry[];
-  onStatusChange: (status: InvoiceStatus) => void;
+  onStatusChange: (status: InvoiceStatus, paidDate?: string) => void;
   onDelete: () => void;
   onDownload: () => void;
   onEmail: () => Promise<void>;
 }) {
   const [emailing, setEmailing] = useState(false);
+  const [paidDateDraft, setPaidDateDraft] = useState(today());
+  const [confirmingPaid, setConfirmingPaid] = useState(false);
+  const overdue = isOverdue(invoice);
 
   async function handleEmailClick() {
     setEmailing(true);
@@ -360,11 +398,46 @@ function InvoiceDetail({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={invoice.status} onChange={(e) => onStatusChange(e.target.value as InvoiceStatus)} className="w-32">
-            <option value="draft">Draft</option>
-            <option value="sent">Sent</option>
-            <option value="paid">Paid</option>
-          </Select>
+          {invoice.status === 'paid' ? (
+            <span className="flex items-center gap-2 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700" data-testid="paid-status">
+              <CheckIcon className="h-4 w-4" />
+              Paid{invoice.paidDate ? ` ${formatDate(invoice.paidDate)}` : ''}
+              <button type="button" onClick={() => onStatusChange('sent')} className="ml-1 font-medium text-emerald-800 underline">
+                Undo
+              </button>
+            </span>
+          ) : confirmingPaid ? (
+            <form
+              className="flex flex-wrap items-center gap-2"
+              data-testid="paid-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                onStatusChange('paid', paidDateDraft);
+                setConfirmingPaid(false);
+              }}
+            >
+              <label className="text-sm text-slate-600">
+                Paid on <Input type="date" value={paidDateDraft} onChange={(e) => setPaidDateDraft(e.target.value)} required className="ml-1" />
+              </label>
+              <Button type="submit">Confirm</Button>
+              <Button type="button" variant="ghost" onClick={() => setConfirmingPaid(false)}>
+                Cancel
+              </Button>
+            </form>
+          ) : (
+            <>
+              <LabelBadge tone={overdue ? 'amber' : statusTone[invoice.status]}>{overdue ? 'overdue' : invoice.status}</LabelBadge>
+              {invoice.status === 'draft' && (
+                <Button variant="secondary" onClick={() => onStatusChange('sent')}>
+                  Mark as sent
+                </Button>
+              )}
+              <Button onClick={() => setConfirmingPaid(true)}>
+                <CheckIcon className="h-4 w-4" />
+                Mark as paid
+              </Button>
+            </>
+          )}
           <Button variant="secondary" onClick={onDownload}>
             Download PDF
           </Button>

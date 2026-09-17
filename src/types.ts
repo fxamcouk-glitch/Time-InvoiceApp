@@ -51,6 +51,8 @@ export interface Invoice {
   taxRate: number; // percent, e.g. 8.5
   notes: string;
   status: InvoiceStatus;
+  /** ISO yyyy-mm-dd; set when marked paid. */
+  paidDate?: string;
 }
 
 export interface BusinessInfo {

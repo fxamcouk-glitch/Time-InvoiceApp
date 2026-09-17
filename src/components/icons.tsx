@@ -115,3 +115,11 @@ export function CameraIcon({ className = 'h-5 w-5' }: { className?: string }) {
     </svg>
   );
 }
+
+export function CheckIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="m5 12 5 5L20 7" />
+    </svg>
+  );
+}
