@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { addDays, formatCurrency, formatDate, today } from '../lib/format';
 import { newId } from '../lib/id';
+import { nextInvoiceNumber } from '../lib/invoiceNumber';
 import { useLocalStorage } from '../lib/storage';
 import { generateInvoicePdf, loadReceiptImages } from '../lib/pdf';
 import { canShareFile, openMailto, pdfToFile, shareFile } from '../lib/share';
@@ -27,12 +28,6 @@ const statusTone: Record<InvoiceStatus, 'gray' | 'blue' | 'green'> = {
 
 function isOverdue(invoice: Invoice): boolean {
   return invoice.status !== 'paid' && invoice.dueDate < today();
-}
-
-function nextInvoiceNumber(invoices: Invoice[]): string {
-  const year = new Date().getFullYear();
-  const count = invoices.filter((i) => i.number.startsWith(`INV-${year}`)).length + 1;
-  return `INV-${year}-${String(count).padStart(3, '0')}`;
 }
 
 export function InvoicesView({
@@ -92,7 +87,7 @@ export function InvoicesView({
     const issueDate = today();
     const invoice: Invoice = {
       id: newId(),
-      number: nextInvoiceNumber(invoices),
+      number: nextInvoiceNumber(invoices, issueDate),
       clientId: creatingClientId,
       issueDate,
       dueDate: addDays(issueDate, Number(dueInDays) || 0),
