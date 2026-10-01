@@ -42,12 +42,95 @@ function byDate<T extends { date: string }>(items: T[]): T[] {
   return [...items].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 }
 
+/** A receipt photo ready to place in the PDF (a JPEG data URL plus its pixel size). */
+export interface ReceiptImage {
+  material: MaterialEntry;
+  dataUrl: string;
+  width: number;
+  height: number;
+}
+
+/** Fetches stored receipt photos for the given materials; ones without a photo are skipped. */
+export async function loadReceiptImages(materials: MaterialEntry[]): Promise<ReceiptImage[]> {
+  const { getPhoto } = await import('./photos');
+  const images: ReceiptImage[] = [];
+  for (const material of byDate(materials)) {
+    if (!material.hasPhoto) continue;
+    const blob = await getPhoto(material.id).catch(() => undefined);
+    if (!blob) continue;
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+    const size = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      img.onerror = () => reject(new Error('Could not read receipt photo.'));
+      img.src = dataUrl;
+    });
+    images.push({ material, dataUrl, ...size });
+  }
+  return images;
+}
+
+/** Appends "Receipts" pages: two photos per page, each captioned with its date, description and cost. */
+function addReceiptPages(doc: jsPDF, invoice: Invoice, receipts: ReceiptImage[]) {
+  const gap = 20;
+  const cellW = (CONTENT_W - gap) / 2;
+  const captionH = 44;
+  const titleH = 34;
+  const cellH = PAGE_H - MARGIN * 2 - titleH - 24;
+  const imageMaxH = cellH - captionH;
+
+  receipts.forEach((receipt, index) => {
+    const col = index % 2;
+    if (col === 0) {
+      doc.addPage();
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.setTextColor(...INK);
+      doc.text('Receipts', MARGIN, MARGIN + 6);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(...MUTED);
+      doc.text(`Supporting invoice ${invoice.number}`, MARGIN, MARGIN + 22);
+      doc.setTextColor(...INK);
+    }
+    const x = MARGIN + col * (cellW + gap);
+    const top = MARGIN + titleH;
+
+    const scale = Math.min(cellW / receipt.width, imageMaxH / receipt.height);
+    const w = receipt.width * scale;
+    const h = receipt.height * scale;
+    const imgX = x + (cellW - w) / 2;
+    doc.setDrawColor(...RULE);
+    doc.setLineWidth(0.6);
+    doc.rect(imgX - 1, top - 1, w + 2, h + 2, 'S');
+    doc.addImage(receipt.dataUrl, 'JPEG', imgX, top, w, h, undefined, 'FAST');
+
+    const m = receipt.material;
+    const captionY = top + h + 16;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.text(`${ukDate(m.date)} · ${formatCurrency(m.amount)}`, x, captionY);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(...MUTED);
+    const firstLine = m.description.split('\n')[0]?.trim();
+    if (firstLine) doc.text(doc.splitTextToSize(firstLine, cellW)[0], x, captionY + 13);
+    doc.setTextColor(...INK);
+  });
+}
+
 export function generateInvoicePdf(
   invoice: Invoice,
   client: Client,
   entries: TimeEntry[],
   materials: MaterialEntry[],
   business: BusinessInfo,
+  receipts: ReceiptImage[] = [],
 ): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   doc.setTextColor(...INK);
@@ -223,6 +306,19 @@ export function generateInvoicePdf(
     doc.setFontSize(10);
     wrapped.forEach((line, i) => doc.text(line, MARGIN, y + 15 + i * 13));
     y += blockH;
+  }
+
+  if (receipts.length > 0) {
+    doc.setFontSize(9);
+    doc.setTextColor(...MUTED);
+    const note = `${receipts.length === 1 ? 'A receipt photo is' : `${receipts.length} receipt photos are`} attached on the following page${receipts.length > 2 ? 's' : ''}.`;
+    if (y + 20 > PAGE_H - MARGIN - 30) {
+      doc.addPage();
+      y = MARGIN;
+    }
+    doc.text(note, MARGIN, y + 4);
+    doc.setTextColor(...INK);
+    addReceiptPages(doc, invoice, receipts);
   }
 
   // ---- Footer on every page

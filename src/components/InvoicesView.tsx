@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { addDays, formatCurrency, formatDate, today } from '../lib/format';
 import { newId } from '../lib/id';
-import { generateInvoicePdf } from '../lib/pdf';
+import { useLocalStorage } from '../lib/storage';
+import { generateInvoicePdf, loadReceiptImages } from '../lib/pdf';
 import { canShareFile, openMailto, pdfToFile, shareFile } from '../lib/share';
 import type { BusinessInfo, Client, Invoice, InvoiceStatus, MaterialEntry, TimeEntry } from '../types';
 import { CheckIcon, MailIcon } from './icons';
@@ -52,6 +53,8 @@ export function InvoicesView({
   const [notes, setNotes] = useState('');
   const [dueInDays, setDueInDays] = useState('14');
   const [viewingId, setViewingId] = useState<string | null>(null);
+  /** Whether receipt photos go on the PDF; remembered on this device. */
+  const [attachReceipts, setAttachReceipts] = useLocalStorage<boolean>('hti.attachReceipts', true);
 
   const unbilledForClient = entries.filter((e) => e.clientId === creatingClientId && !e.invoiceId);
   const unbilledMaterialsForClient = materials.filter((m) => m.clientId === creatingClientId && !m.invoiceId);
@@ -122,23 +125,24 @@ export function InvoicesView({
     );
   }
 
-  function buildInvoicePdf(invoice: Invoice) {
+  async function buildInvoicePdf(invoice: Invoice) {
     const client = clientMap.get(invoice.clientId);
     if (!client) return null;
     const invoiceEntries = entries.filter((e) => invoice.entryIds.includes(e.id));
     const invoiceMaterials = materials.filter((m) => (invoice.materialIds ?? []).includes(m.id));
-    const doc = generateInvoicePdf(invoice, client, invoiceEntries, invoiceMaterials, business);
+    const receipts = attachReceipts ? await loadReceiptImages(invoiceMaterials).catch(() => []) : [];
+    const doc = generateInvoicePdf(invoice, client, invoiceEntries, invoiceMaterials, business, receipts);
     return { doc, client };
   }
 
-  function download(invoice: Invoice) {
-    const built = buildInvoicePdf(invoice);
+  async function download(invoice: Invoice) {
+    const built = await buildInvoicePdf(invoice);
     if (!built) return;
     built.doc.save(`${invoice.number}.pdf`);
   }
 
   async function emailInvoice(invoice: Invoice) {
-    const built = buildInvoicePdf(invoice);
+    const built = await buildInvoicePdf(invoice);
     if (!built) return;
     const { doc, client } = built;
     const filename = `${invoice.number}.pdf`;
@@ -342,6 +346,9 @@ export function InvoicesView({
             onDelete={() => deleteInvoice(viewingInvoice.id)}
             onDownload={() => download(viewingInvoice)}
             onEmail={() => emailInvoice(viewingInvoice)}
+            receiptCount={materials.filter((m) => (viewingInvoice.materialIds ?? []).includes(m.id) && m.hasPhoto).length}
+            attachReceipts={attachReceipts}
+            onAttachReceiptsChange={setAttachReceipts}
           />
         )}
       </div>
@@ -358,6 +365,9 @@ function InvoiceDetail({
   onDelete,
   onDownload,
   onEmail,
+  receiptCount,
+  attachReceipts,
+  onAttachReceiptsChange,
 }: {
   invoice: Invoice;
   client: Client | null;
@@ -365,8 +375,11 @@ function InvoiceDetail({
   materials: MaterialEntry[];
   onStatusChange: (status: InvoiceStatus, paidDate?: string) => void;
   onDelete: () => void;
-  onDownload: () => void;
+  onDownload: () => void | Promise<void>;
   onEmail: () => Promise<void>;
+  receiptCount: number;
+  attachReceipts: boolean;
+  onAttachReceiptsChange: (value: boolean) => void;
 }) {
   const [emailing, setEmailing] = useState(false);
   const [paidDateDraft, setPaidDateDraft] = useState(today());
@@ -450,6 +463,17 @@ function InvoiceDetail({
           </Button>
         </div>
       </div>
+      {receiptCount > 0 && (
+        <label className="mb-4 flex items-center gap-2 text-sm text-slate-600" data-testid="attach-receipts">
+          <input
+            type="checkbox"
+            checked={attachReceipts}
+            onChange={(e) => onAttachReceiptsChange(e.target.checked)}
+            className="h-5 w-5 rounded border-slate-300 accent-indigo-600"
+          />
+          Attach {receiptCount === 1 ? 'the receipt photo' : `${receiptCount} receipt photos`} to the PDF
+        </label>
+      )}
 
       {entries.length > 0 && (
         <div className="overflow-x-auto">
